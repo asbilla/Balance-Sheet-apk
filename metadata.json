@@ -1,0 +1,7 @@
+{
+  "name": "Daily Report",
+  "description": "Daily Business Reporting Tool connected to Google Sheets with offline caching and day-by-day balance sheets.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
