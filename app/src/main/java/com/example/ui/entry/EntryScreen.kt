@@ -94,7 +94,7 @@ fun EntryScreen(
     var amountText by remember { mutableStateOf("") }
     var notesText by remember { mutableStateOf("") }
     var selectedDate by remember {
-        mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
+        mutableStateOf(SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date()))
     }
     var isSaving by remember { mutableStateOf(false) }
 
@@ -117,7 +117,7 @@ fun EntryScreen(
     val datePickerDialog = DatePickerDialog(
         context,
         { _, year, month, dayOfMonth ->
-            val formatted = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, dayOfMonth)
+            val formatted = String.format(Locale.US, "%02d-%02d-%04d", dayOfMonth, month + 1, year)
             selectedDate = formatted
         },
         calendar.get(Calendar.YEAR),
@@ -337,8 +337,9 @@ fun EntryScreen(
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
+                        val displayDate = selectedDate
                         Text(
-                            text = selectedDate,
+                            text = displayDate,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurface
@@ -430,10 +431,19 @@ private fun parseOrCurrentCalendar(dateStr: String): Calendar {
     try {
         val parts = dateStr.split("-")
         if (parts.size == 3) {
-            val year = parts[0].toInt()
-            val month = parts[1].toInt() - 1
-            val day = parts[2].toInt()
-            cal.set(year, month, day)
+            if (parts[0].length == 4) {
+                // YYYY-MM-DD
+                val year = parts[0].toInt()
+                val month = parts[1].toInt() - 1
+                val day = parts[2].toInt()
+                cal.set(year, month, day)
+            } else {
+                // DD-MM-YYYY
+                val day = parts[0].toInt()
+                val month = parts[1].toInt() - 1
+                val year = parts[2].toInt()
+                cal.set(year, month, day)
+            }
         }
     } catch (_: Exception) {}
     return cal

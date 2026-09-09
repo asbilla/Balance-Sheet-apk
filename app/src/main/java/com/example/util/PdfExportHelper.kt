@@ -124,7 +124,7 @@ object PdfExportHelper {
                 y += 13f
             }
 
-            val timeStamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
+            val timeStamp = SimpleDateFormat("dd-MM-yyyy hh:mm a", Locale.getDefault()).format(Date())
             canvas.drawText("BALANCE SHEET FINANCIAL STATEMENT  •  Generated on: $timeStamp", 30f, y, metaPaint)
             y += 12f
             canvas.drawLine(30f, y, (pageWidth - 30).toFloat(), y, linePaint)
@@ -180,7 +180,14 @@ object PdfExportHelper {
 
                 // Date separator bar
                 canvas.drawRect(30f, y - 4f, (pageWidth - 30).toFloat(), y + 16f, Paint().apply { color = Color.rgb(243, 244, 246) })
-                val dateTitle = "${dateSum.date}   (Day Net: $${String.format(Locale.US, "%,.2f", dateSum.netBalance)} | Cumulative: $${String.format(Locale.US, "%,.2f", dateSum.cumulativeBalance)})"
+                val displayDateSum = try {
+                    val parser = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                    val formatter = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
+                    parser.parse(dateSum.date)?.let { formatter.format(it) } ?: dateSum.date
+                } catch (_: Exception) {
+                    dateSum.date
+                }
+                val dateTitle = "$displayDateSum   (Day Net: $${String.format(Locale.US, "%,.2f", dateSum.netBalance)} | Cumulative: $${String.format(Locale.US, "%,.2f", dateSum.cumulativeBalance)})"
                 canvas.drawText(dateTitle, 35f, y + 10f, boldTextPaint)
                 y += 22f
 
@@ -196,7 +203,14 @@ object PdfExportHelper {
                         y += 26f
                     }
 
-                    canvas.drawText(tx.date, 35f, y, textPaint)
+                    val displayTxDate = try {
+                        val parser = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                        val formatter = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
+                        parser.parse(tx.date)?.let { formatter.format(it) } ?: tx.date
+                    } catch (_: Exception) {
+                        tx.date
+                    }
+                    canvas.drawText(displayTxDate, 35f, y, textPaint)
                     canvas.drawText(tx.type, 100f, y, textPaint)
 
                     val shortNotes = if (tx.category.length > 22) tx.category.take(20) + ".." else tx.category
@@ -223,7 +237,7 @@ object PdfExportHelper {
             if (!downloadsDir.exists()) {
                 downloadsDir.mkdirs()
             }
-            val fileName = "Business_Balance_Sheet_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.pdf"
+            val fileName = "Business_Balance_Sheet_${SimpleDateFormat("ddMMyyyy_hhmmss_a", Locale.getDefault()).format(Date())}.pdf"
             val file = File(downloadsDir, fileName)
 
             val outputStream = FileOutputStream(file)

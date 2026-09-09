@@ -712,11 +712,18 @@ fun DateBalanceCard(
 
     val formattedDateHeader = remember(summary.date) {
         try {
-            val parser = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val dateObj = parser.parse(summary.date)
-            if (dateObj != null) {
-                SimpleDateFormat("EEE, MMM dd, yyyy", Locale.getDefault()).format(dateObj)
+            val parts = summary.date.split("-")
+            if (parts.size == 3 && parts[0].length == 4) {
+                // Parse yyyy-MM-dd and format to dd-MM-yyyy
+                val parser = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                val dateObj = parser.parse(summary.date)
+                if (dateObj != null) {
+                    SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(dateObj)
+                } else {
+                    summary.date
+                }
             } else {
+                // Already dd-MM-yyyy or unknown
                 summary.date
             }
         } catch (_: Exception) {
@@ -747,8 +754,22 @@ fun DateBalanceCard(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+                    val displayRawDate = remember(summary.date) {
+                        try {
+                            val parts = summary.date.split("-")
+                            if (parts.size == 3 && parts[0].length == 4) {
+                                val parser = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                                val formatter = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
+                                parser.parse(summary.date)?.let { formatter.format(it) } ?: summary.date
+                            } else {
+                                summary.date
+                            }
+                        } catch (_: Exception) {
+                            summary.date
+                        }
+                    }
                     Text(
-                        text = summary.date,
+                        text = displayRawDate,
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1061,10 +1082,11 @@ fun EditAmountDialog(
 
     val formattedDate = remember(state.date) {
         try {
-            val parser = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val dateObj = parser.parse(state.date)
-            if (dateObj != null) {
-                SimpleDateFormat("EEEE, MMM dd, yyyy", Locale.getDefault()).format(dateObj)
+            val parts = state.date.split("-")
+            if (parts.size == 3 && parts[0].length == 4) {
+                val parser = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                val formatter = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
+                parser.parse(state.date)?.let { formatter.format(it) } ?: state.date
             } else {
                 state.date
             }

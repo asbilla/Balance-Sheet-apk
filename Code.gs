@@ -43,9 +43,18 @@ function getMonthSheetName(dateInput) {
     } else if (typeof dateInput === "string") {
       var parts = dateInput.trim().split("-");
       if (parts.length === 3) {
-        var year = parseInt(parts[0], 10);
-        var month = parseInt(parts[1], 10) - 1;
-        var day = parseInt(parts[2], 10);
+        var year, month, day;
+        if (parts[0].length === 4) {
+          // YYYY-MM-DD
+          year = parseInt(parts[0], 10);
+          month = parseInt(parts[1], 10) - 1;
+          day = parseInt(parts[2], 10);
+        } else {
+          // DD-MM-YYYY
+          year = parseInt(parts[2], 10);
+          month = parseInt(parts[1], 10) - 1;
+          day = parseInt(parts[0], 10);
+        }
         d = new Date(year, month, day);
       } else {
         var parsed = new Date(dateInput);
@@ -107,7 +116,7 @@ function checkAndInsertOpeningBalance(ss, sheet, sheetName) {
       var yr = parseInt(sheetName.slice(3), 10) + 2000;
       var mIdx = MONTH_NAMES.indexOf(abbr) + 1;
       var mStr = (mIdx < 10 ? "0" : "") + mIdx;
-      var openDate = yr + "-" + mStr + "-01";
+      var openDate = "01-" + mStr + "-" + yr;
 
       sheet.appendRow([
         openDate,
@@ -204,7 +213,7 @@ function saveBusinessProfileToSheet1(ss, data) {
     ["3. Business Address", data.businessAddress || ""],
     ["4. Phone / Mobile", data.phoneMobile || ""],
     ["5. Email Address", data.email || ""],
-    ["Last Updated", Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "GMT", "yyyy-MM-dd HH:mm:ss")]
+    ["Last Updated", Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "GMT", "dd-MM-yyyy hh:mm:ss a")]
   ];
 
   var dataRange = sheet.getRange(2, 1, rows.length, 2);
@@ -493,7 +502,16 @@ function doPost(e) {
     }
 
     var id = data.id || Utilities.getUuid();
-    var date = data.date || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+    var rawDateStr = data.date || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+    
+    // Format for sheet display (DD-MM-YYYY)
+    var sheetDate = rawDateStr;
+    var dateParts = rawDateStr.trim().split("-");
+    if (dateParts.length === 3 && dateParts[0].length === 4) {
+      sheetDate = dateParts[2] + "-" + dateParts[1] + "-" + dateParts[0];
+    }
+    
+    var date = sheetDate;
     var type = data.type || "Daily Income";
     var notes = data.notes || data.category || "";
     var amount = parseFloat(data.amount) || 0.0;
@@ -626,9 +644,19 @@ function doGet(e) {
           var rawDate = row[0];
           if (!rawDate) continue;
 
-          var formattedDate = rawDate instanceof Date
-            ? Utilities.formatDate(rawDate, Session.getScriptTimeZone(), "yyyy-MM-dd")
-            : String(rawDate);
+          var formattedDate = "";
+          if (rawDate instanceof Date) {
+            formattedDate = Utilities.formatDate(rawDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+          } else {
+            var dateStr = String(rawDate);
+            var parts = dateStr.trim().split("-");
+            if (parts.length === 3 && parts[0].length !== 4) {
+              // Convert DD-MM-YYYY to YYYY-MM-DD for the app
+              formattedDate = parts[2] + "-" + parts[1] + "-" + parts[0];
+            } else {
+              formattedDate = dateStr;
+            }
+          }
 
           var type = String(row[1] || "Daily Income");
           var notes = String(row[2] || "");
@@ -656,9 +684,18 @@ function doGet(e) {
           var legacyDate = row[1];
           if (!legacyDate) continue;
 
-          var fDate = legacyDate instanceof Date
-            ? Utilities.formatDate(legacyDate, Session.getScriptTimeZone(), "yyyy-MM-dd")
-            : String(legacyDate);
+          var fDate = "";
+          if (legacyDate instanceof Date) {
+            fDate = Utilities.formatDate(legacyDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+          } else {
+            var lDateStr = String(legacyDate);
+            var lParts = lDateStr.trim().split("-");
+            if (lParts.length === 3 && lParts[0].length !== 4) {
+              fDate = lParts[2] + "-" + lParts[1] + "-" + lParts[0];
+            } else {
+              fDate = lDateStr;
+            }
+          }
 
           var legType = String(row[2] || "Daily Income");
           var legNotes = String(row[3] || "");

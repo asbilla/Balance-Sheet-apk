@@ -85,7 +85,7 @@ fun DashboardScreen(
     val businessProfile by repository.businessProfile.collectAsStateWithLifecycle(initialValue = repository.getBusinessProfile())
 
     val todayDate = remember {
-        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date())
     }
 
     // Calculate today's summary
@@ -114,7 +114,7 @@ fun DashboardScreen(
                         )
                         Text(
                             text = buildString {
-                                append(SimpleDateFormat("EEEE, MMM dd, yyyy", Locale.getDefault()).format(Date()))
+                                append(SimpleDateFormat("EEEE, dd-MM-yyyy hh:mm a", Locale.getDefault()).format(Date()))
                                 if (businessProfile.abnAcn.isNotBlank()) {
                                     append(" • ")
                                     append(businessProfile.abnAcn)
