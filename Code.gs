@@ -213,7 +213,7 @@ function saveBusinessProfileToSheet1(ss, data) {
     ["3. Business Address", data.businessAddress || ""],
     ["4. Phone / Mobile", data.phoneMobile || ""],
     ["5. Email Address", data.email || ""],
-    ["Last Updated", Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "GMT", "dd-MM-yyyy hh:mm:ss a")]
+    ["Last Updated", Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "GMT", "dd-MM-yyyy hh:mm a")]
   ];
 
   var dataRange = sheet.getRange(2, 1, rows.length, 2);
@@ -329,13 +329,16 @@ function updateTransactionInSpreadsheet(ss, data) {
       sheetToUpdate.getRange(foundRow, 2).setValue(type);
     }
 
-    // Recalculate balance formula
-    sheetToUpdate.getRange(foundRow, 6).setFormula('=SUM(D$2:D' + foundRow + ')-SUM(E$2:E' + foundRow + ')');
-    sheetToUpdate.getRange(foundRow, 4, 1, 3).setNumberFormat("$#,##0.00");
+    // Recalculate balance formula for all rows in this sheet to ensure consistency
+    var lastRowInSheet = sheetToUpdate.getLastRow();
+    if (lastRowInSheet > 1) {
+      sheetToUpdate.getRange(2, 6, lastRowInSheet - 1, 1).setFormulaR1C1("=SUM(R2C4:RC4)-SUM(R2C5:RC5)");
+      sheetToUpdate.getRange(2, 4, lastRowInSheet - 1, 3).setNumberFormat("$#,##0.00");
+    }
 
     return {
       status: "success",
-      message: "Transaction updated in sheet " + sheetToUpdate.getName() + " row " + foundRow,
+      message: "Transaction updated and balance recalculated in " + sheetToUpdate.getName(),
       sheet: sheetToUpdate.getName(),
       row: foundRow,
       newAmount: newAmount
@@ -448,15 +451,16 @@ function deleteTransactionFromSpreadsheet(ss, data) {
   if (foundRow !== -1 && sheetToModify) {
     sheetToModify.deleteRow(foundRow);
 
-    // Refresh balance formulas for rows after the deleted row
+    // Refresh balance formulas for ALL rows in this sheet to ensure consistency
     var newLastRow = sheetToModify.getLastRow();
-    for (var r = Math.max(2, foundRow); r <= newLastRow; r++) {
-      sheetToModify.getRange(r, 6).setFormula('=SUM(D$2:D' + r + ')-SUM(E$2:E' + r + ')');
+    if (newLastRow > 1) {
+      sheetToModify.getRange(2, 6, newLastRow - 1, 1).setFormulaR1C1("=SUM(R2C4:RC4)-SUM(R2C5:RC5)");
+      sheetToModify.getRange(2, 4, newLastRow - 1, 3).setNumberFormat("$#,##0.00");
     }
 
     return {
       status: "success",
-      message: "Transaction deleted from sheet " + sheetToModify.getName() + " row " + foundRow,
+      message: "Transaction deleted and balance recalculated from " + sheetToModify.getName(),
       sheet: sheetToModify.getName()
     };
   } else {
@@ -503,12 +507,16 @@ function doPost(e) {
 
     var id = data.id || Utilities.getUuid();
     var rawDateStr = data.date || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
-    
-    // Format for sheet display (DD-MM-YYYY)
-    var sheetDate = rawDateStr;
     var dateParts = rawDateStr.trim().split("-");
+    var sheetDate;
     if (dateParts.length === 3 && dateParts[0].length === 4) {
-      sheetDate = dateParts[2] + "-" + dateParts[1] + "-" + dateParts[0];
+      // Parse YYYY-MM-DD
+      sheetDate = new Date(parseInt(dateParts[0], 10), parseInt(dateParts[1], 10) - 1, parseInt(dateParts[2], 10));
+    } else if (dateParts.length === 3) {
+      // Parse DD-MM-YYYY
+      sheetDate = new Date(parseInt(dateParts[2], 10), parseInt(dateParts[1], 10) - 1, parseInt(dateParts[0], 10));
+    } else {
+      sheetDate = new Date();
     }
     
     var date = sheetDate;
@@ -524,16 +532,10 @@ function doPost(e) {
     // Ensure opening balance row exists if this is the first transaction of the month
     checkAndInsertOpeningBalance(ss, sheet, sheetName);
 
-    var nextRow = sheet.getLastRow() + 1;
-
     // Income vs Expense & Bills separation
     var isIncome = (type === "Daily Income" || type === "Opening Balance");
     var incomeValue = isIncome ? amount : "";
     var expenseValue = !isIncome ? amount : "";
-
-    // Automatic Balance formula:
-    // Cumulative Sum of all Income (column D) minus all Expense & Bills (column E) up to current row
-    var balanceFormula = '=SUM(D$2:D' + nextRow + ')-SUM(E$2:E' + nextRow + ')';
 
     sheet.appendRow([
       date,
@@ -541,21 +543,37 @@ function doPost(e) {
       notes,
       incomeValue,
       expenseValue,
-      balanceFormula,
+      "", // Balance will be recalculated after sort
       id,
       createdAt
     ]);
 
-    // Format Income, Expense & Bills, and Balance as Currency ($#,##0.00)
-    var formatRange = sheet.getRange(nextRow, 4, 1, 3);
-    formatRange.setNumberFormat("$#,##0.00");
+    var lastRow = sheet.getLastRow();
+    
+    // Format Date column (A)
+    sheet.getRange(2, 1, lastRow - 1, 1).setNumberFormat("dd-mm-yyyy");
+    
+    // Sort by Date (Column A) ascending
+    if (lastRow > 2) {
+      sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).sort([{column: 1, ascending: true}]);
+    }
+
+    // Recalculate Balance formulas for all rows to ensure accuracy after sorting
+    var dataRows = sheet.getLastRow() - 1;
+    if (dataRows > 0) {
+      var balanceRange = sheet.getRange(2, 6, dataRows, 1);
+      balanceRange.setFormulaR1C1("=SUM(R2C4:RC4)-SUM(R2C5:RC5)");
+      
+      // Format Income, Expense & Bills, and Balance as Currency ($#,##0.00)
+      sheet.getRange(2, 4, dataRows, 3).setNumberFormat("$#,##0.00");
+    }
 
     // Re-verify hidden columns
     sheet.hideColumns(7, 2);
 
     return ContentService.createTextOutput(JSON.stringify({
       status: "success",
-      message: "Transaction saved to " + sheetName,
+      message: "Transaction saved and sorted in " + sheetName,
       sheet: sheetName,
       id: id
     })).setMimeType(ContentService.MimeType.JSON);

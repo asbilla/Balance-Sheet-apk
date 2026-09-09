@@ -114,7 +114,7 @@ fun DashboardScreen(
                         )
                         Text(
                             text = buildString {
-                                append(SimpleDateFormat("EEEE, dd-MM-yyyy hh:mm a", Locale.getDefault()).format(Date()))
+                                append(SimpleDateFormat("EEE, dd MMM yyyy hh:mm a", Locale.getDefault()).format(Date()))
                                 if (businessProfile.abnAcn.isNotBlank()) {
                                     append(" • ")
                                     append(businessProfile.abnAcn)

@@ -94,7 +94,7 @@ fun EntryScreen(
     var amountText by remember { mutableStateOf("") }
     var notesText by remember { mutableStateOf("") }
     var selectedDate by remember {
-        mutableStateOf(SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date()))
+        mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
     }
     var isSaving by remember { mutableStateOf(false) }
 
@@ -117,7 +117,7 @@ fun EntryScreen(
     val datePickerDialog = DatePickerDialog(
         context,
         { _, year, month, dayOfMonth ->
-            val formatted = String.format(Locale.US, "%02d-%02d-%04d", dayOfMonth, month + 1, year)
+            val formatted = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, dayOfMonth)
             selectedDate = formatted
         },
         calendar.get(Calendar.YEAR),
@@ -337,7 +337,15 @@ fun EntryScreen(
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
-                        val displayDate = selectedDate
+                        val displayDate = remember(selectedDate) {
+                            try {
+                                val parser = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                                val formatter = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
+                                parser.parse(selectedDate)?.let { formatter.format(it) } ?: selectedDate
+                            } catch (_: Exception) {
+                                selectedDate
+                            }
+                        }
                         Text(
                             text = displayDate,
                             fontSize = 15.sp,
