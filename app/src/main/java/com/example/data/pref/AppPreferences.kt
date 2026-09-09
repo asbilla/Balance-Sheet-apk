@@ -13,6 +13,9 @@ class AppPreferences(context: Context) {
     private val _webAppUrlFlow = MutableStateFlow(getWebAppUrl())
     val webAppUrlFlow: StateFlow<String> = _webAppUrlFlow.asStateFlow()
 
+    private val _businessProfileFlow = MutableStateFlow(getBusinessProfile())
+    val businessProfileFlow: StateFlow<BusinessProfile> = _businessProfileFlow.asStateFlow()
+
     fun getWebAppUrl(): String {
         return prefs.getString(KEY_WEB_APP_URL, "")?.trim() ?: ""
     }
@@ -21,6 +24,27 @@ class AppPreferences(context: Context) {
         val trimmed = url.trim()
         prefs.edit().putString(KEY_WEB_APP_URL, trimmed).apply()
         _webAppUrlFlow.value = trimmed
+    }
+
+    fun getBusinessProfile(): BusinessProfile {
+        return BusinessProfile(
+            businessName = prefs.getString(KEY_BUSINESS_NAME, "") ?: "",
+            abnAcn = prefs.getString(KEY_ABN_ACN, "") ?: "",
+            businessAddress = prefs.getString(KEY_BUSINESS_ADDRESS, "") ?: "",
+            phoneMobile = prefs.getString(KEY_PHONE_MOBILE, "") ?: "",
+            email = prefs.getString(KEY_EMAIL, "") ?: ""
+        )
+    }
+
+    fun setBusinessProfile(profile: BusinessProfile) {
+        prefs.edit()
+            .putString(KEY_BUSINESS_NAME, profile.businessName.trim())
+            .putString(KEY_ABN_ACN, profile.abnAcn.trim())
+            .putString(KEY_BUSINESS_ADDRESS, profile.businessAddress.trim())
+            .putString(KEY_PHONE_MOBILE, profile.phoneMobile.trim())
+            .putString(KEY_EMAIL, profile.email.trim())
+            .apply()
+        _businessProfileFlow.value = profile
     }
 
     fun isConfigured(): Boolean {
@@ -35,6 +59,11 @@ class AppPreferences(context: Context) {
     companion object {
         private const val PREF_NAME = "business_reporting_prefs"
         private const val KEY_WEB_APP_URL = "google_apps_script_url"
+        private const val KEY_BUSINESS_NAME = "business_name"
+        private const val KEY_ABN_ACN = "abn_acn"
+        private const val KEY_BUSINESS_ADDRESS = "business_address"
+        private const val KEY_PHONE_MOBILE = "phone_mobile"
+        private const val KEY_EMAIL = "email_address"
 
         @Volatile
         private var INSTANCE: AppPreferences? = null

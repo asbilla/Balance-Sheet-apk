@@ -82,6 +82,7 @@ fun DashboardScreen(
     val context = LocalContext.current
     val transactions by repository.allTransactions.collectAsStateWithLifecycle(initialValue = emptyList())
     val unsyncedCount by repository.unsyncedCount.collectAsStateWithLifecycle(initialValue = 0)
+    val businessProfile by repository.businessProfile.collectAsStateWithLifecycle(initialValue = repository.getBusinessProfile())
 
     val todayDate = remember {
         SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
@@ -94,20 +95,34 @@ fun DashboardScreen(
     val todayBills = todayTransactions.filter { it.type == "Bill" }.sumOf { it.amount }
     val todayNet = todayIncome - (todayExpense + todayBills)
 
+    val headerTitle = if (businessProfile.businessName.isNotBlank()) {
+        "Daily Business Report (${businessProfile.businessName})"
+    } else {
+        "Daily Business Report (Business Name)"
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Column {
                         Text(
-                            text = "Daily Business Report",
+                            text = headerTitle,
                             style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
                         )
                         Text(
-                            text = SimpleDateFormat("EEEE, MMM dd, yyyy", Locale.getDefault()).format(Date()),
+                            text = buildString {
+                                append(SimpleDateFormat("EEEE, MMM dd, yyyy", Locale.getDefault()).format(Date()))
+                                if (businessProfile.abnAcn.isNotBlank()) {
+                                    append(" • ")
+                                    append(businessProfile.abnAcn)
+                                }
+                            },
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
                         )
                     }
                 },
@@ -150,16 +165,65 @@ fun DashboardScreen(
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Sync status pill / banner
-            SyncStatusBanner(
-                unsyncedCount = unsyncedCount,
-                onSyncClick = {
-                    repository.triggerBackgroundSync()
-                    Toast.makeText(context, "Syncing unsynced entries with Sheets...", Toast.LENGTH_SHORT).show()
-                }
+            // 1. QUICK ACTIONS SECTION (ON TOP)
+            Text(
+                text = "Quick Actions",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(top = 4.dp)
             )
 
-            // Today's Performance Snapshot Card
+            // 4 MAIN FULL-WIDTH ACTION BUTTONS AS REQUIRED:
+            // 1. Daily Income (Green Accent) -> Opens EntryScreen configured for "Daily Income"
+            ActionButtonCard(
+                title = "Daily Income",
+                subtitle = "Log daily store sales, revenue & collections",
+                icon = Icons.Default.TrendingUp,
+                accentColor = IncomeGreen,
+                containerColor = IncomeGreenContainer,
+                textColor = IncomeGreenText,
+                testTag = "action_daily_income",
+                onClick = { onNavigateToEntry("Daily Income") }
+            )
+
+            // 2. Expenses (Red Accent) -> Opens EntryScreen configured for "Expense"
+            ActionButtonCard(
+                title = "Expenses",
+                subtitle = "Record daily operational expenses & supplies",
+                icon = Icons.Default.MoneyOff,
+                accentColor = ExpenseRed,
+                containerColor = ExpenseRedContainer,
+                textColor = ExpenseRedText,
+                testTag = "action_expenses",
+                onClick = { onNavigateToEntry("Expense") }
+            )
+
+            // 3. Bills (Orange Accent) -> Opens EntryScreen configured for "Bill"
+            ActionButtonCard(
+                title = "Bills",
+                subtitle = "Track utility, rent, tax & vendor invoices",
+                icon = Icons.Default.ReceiptLong,
+                accentColor = BillOrange,
+                containerColor = BillOrangeContainer,
+                textColor = BillOrangeText,
+                testTag = "action_bills",
+                onClick = { onNavigateToEntry("Bill") }
+            )
+
+            // 4. Day-by-Day Balance Sheet (Blue Accent) -> Opens BalanceSheetScreen
+            ActionButtonCard(
+                title = "Day-by-Day Balance Sheet",
+                subtitle = "View full chronological balance breakdowns",
+                icon = Icons.Default.AccountBalance,
+                accentColor = BalanceBlue,
+                containerColor = BalanceBlueContainer,
+                textColor = BalanceBlueText,
+                testTag = "action_balance_sheet",
+                onClick = onNavigateToBalanceSheet
+            )
+
+            // 2. TODAY'S NET BALANCE SECTION (BELOW QUICK ACTIONS)
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
@@ -228,61 +292,13 @@ fun DashboardScreen(
                 }
             }
 
-            Text(
-                text = "Quick Actions",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(top = 4.dp)
-            )
-
-            // 4 MAIN FULL-WIDTH ACTION BUTTONS AS REQUIRED:
-            // 1. Daily Income (Green Accent) -> Opens EntryScreen configured for "Daily Income"
-            ActionButtonCard(
-                title = "Daily Income",
-                subtitle = "Log daily store sales, revenue & collections",
-                icon = Icons.Default.TrendingUp,
-                accentColor = IncomeGreen,
-                containerColor = IncomeGreenContainer,
-                textColor = IncomeGreenText,
-                testTag = "action_daily_income",
-                onClick = { onNavigateToEntry("Daily Income") }
-            )
-
-            // 2. Expenses (Red Accent) -> Opens EntryScreen configured for "Expense"
-            ActionButtonCard(
-                title = "Expenses",
-                subtitle = "Record daily operational expenses & supplies",
-                icon = Icons.Default.MoneyOff,
-                accentColor = ExpenseRed,
-                containerColor = ExpenseRedContainer,
-                textColor = ExpenseRedText,
-                testTag = "action_expenses",
-                onClick = { onNavigateToEntry("Expense") }
-            )
-
-            // 3. Bills (Orange Accent) -> Opens EntryScreen configured for "Bill"
-            ActionButtonCard(
-                title = "Bills",
-                subtitle = "Track utility, rent, tax & vendor invoices",
-                icon = Icons.Default.ReceiptLong,
-                accentColor = BillOrange,
-                containerColor = BillOrangeContainer,
-                textColor = BillOrangeText,
-                testTag = "action_bills",
-                onClick = { onNavigateToEntry("Bill") }
-            )
-
-            // 4. Day-by-Day Balance Sheet (Blue Accent) -> Opens BalanceSheetScreen
-            ActionButtonCard(
-                title = "Day-by-Day Balance Sheet",
-                subtitle = "View full chronological balance breakdowns",
-                icon = Icons.Default.AccountBalance,
-                accentColor = BalanceBlue,
-                containerColor = BalanceBlueContainer,
-                textColor = BalanceBlueText,
-                testTag = "action_balance_sheet",
-                onClick = onNavigateToBalanceSheet
+            // 3. SYNC STATUS (AT BOTTOM)
+            SyncStatusBanner(
+                unsyncedCount = unsyncedCount,
+                onSyncClick = {
+                    repository.triggerBackgroundSync()
+                    Toast.makeText(context, "Syncing unsynced entries with Sheets...", Toast.LENGTH_SHORT).show()
+                }
             )
 
             Spacer(modifier = Modifier.height(16.dp))

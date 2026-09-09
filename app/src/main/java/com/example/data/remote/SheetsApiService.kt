@@ -74,6 +74,136 @@ class SheetsApiService(
         }
     }
 
+    suspend fun postBusinessProfile(webAppUrl: String, profile: com.example.data.pref.BusinessProfile): Result<String> {
+        return withContext(Dispatchers.IO) {
+            try {
+                if (webAppUrl.isBlank()) {
+                    return@withContext Result.failure(IllegalArgumentException("Google Apps Script URL is empty"))
+                }
+
+                val payload = JSONObject().apply {
+                    put("action", "save_profile")
+                    put("businessName", profile.businessName)
+                    put("abnAcn", profile.abnAcn)
+                    put("businessAddress", profile.businessAddress)
+                    put("phoneMobile", profile.phoneMobile)
+                    put("email", profile.email)
+                }
+
+                val requestBody = payload.toString().toRequestBody(jsonMediaType)
+                val request = Request.Builder()
+                    .url(webAppUrl)
+                    .post(requestBody)
+                    .addHeader("Content-Type", "application/json")
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    val responseBody = response.body?.string().orEmpty()
+                    if (response.isSuccessful) {
+                        Log.d(TAG, "Successfully saved business profile to Sheet1: $responseBody")
+                        Result.success(responseBody)
+                    } else {
+                        Log.e(TAG, "Failed saving business profile. Code: ${response.code}, body: $responseBody")
+                        Result.failure(Exception("HTTP Error ${response.code}: $responseBody"))
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during postBusinessProfile", e)
+                Result.failure(e)
+            }
+        }
+    }
+
+    suspend fun updateTransactionOnSheets(
+        webAppUrl: String,
+        id: String,
+        date: String,
+        type: String,
+        amount: Double,
+        notes: String = ""
+    ): Result<String> {
+        return withContext(Dispatchers.IO) {
+            try {
+                if (webAppUrl.isBlank()) {
+                    return@withContext Result.failure(IllegalArgumentException("Google Apps Script URL is empty"))
+                }
+
+                val payload = JSONObject().apply {
+                    put("action", "update_transaction")
+                    put("id", id)
+                    put("date", date)
+                    put("type", type)
+                    put("amount", amount)
+                    put("notes", notes)
+                }
+
+                val requestBody = payload.toString().toRequestBody(jsonMediaType)
+                val request = Request.Builder()
+                    .url(webAppUrl)
+                    .post(requestBody)
+                    .addHeader("Content-Type", "application/json")
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    val responseBody = response.body?.string().orEmpty()
+                    if (response.isSuccessful) {
+                        Log.d(TAG, "Successfully updated transaction on sheets: $responseBody")
+                        Result.success(responseBody)
+                    } else {
+                        Log.e(TAG, "Failed updating transaction on sheets. Code: ${response.code}, body: $responseBody")
+                        Result.failure(Exception("HTTP Error ${response.code}: $responseBody"))
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during updateTransactionOnSheets", e)
+                Result.failure(e)
+            }
+        }
+    }
+
+    suspend fun deleteTransactionOnSheets(
+        webAppUrl: String,
+        id: String,
+        date: String,
+        type: String
+    ): Result<String> {
+        return withContext(Dispatchers.IO) {
+            try {
+                if (webAppUrl.isBlank()) {
+                    return@withContext Result.failure(IllegalArgumentException("Google Apps Script URL is empty"))
+                }
+
+                val payload = JSONObject().apply {
+                    put("action", "delete_transaction")
+                    put("id", id)
+                    put("date", date)
+                    put("type", type)
+                }
+
+                val requestBody = payload.toString().toRequestBody(jsonMediaType)
+                val request = Request.Builder()
+                    .url(webAppUrl)
+                    .post(requestBody)
+                    .addHeader("Content-Type", "application/json")
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    val responseBody = response.body?.string().orEmpty()
+                    if (response.isSuccessful) {
+                        Log.d(TAG, "Successfully deleted transaction on sheets: $responseBody")
+                        Result.success(responseBody)
+                    } else {
+                        Log.e(TAG, "Failed deleting transaction on sheets. Code: ${response.code}, body: $responseBody")
+                        Result.failure(Exception("HTTP Error ${response.code}: $responseBody"))
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during deleteTransactionOnSheets", e)
+                Result.failure(e)
+            }
+        }
+    }
+
     suspend fun fetchTransactions(webAppUrl: String): Result<List<RemoteTransaction>> {
         return withContext(Dispatchers.IO) {
             try {
@@ -155,7 +285,12 @@ class SheetsApiService(
                 item.has("category") -> item.optString("category", "")
                 else -> ""
             }
-            val amount = item.optDouble("amount", 0.0)
+            val amount = when {
+                item.has("amount") && item.optDouble("amount", 0.0) > 0.0 -> item.optDouble("amount", 0.0)
+                item.has("income") && item.optDouble("income", 0.0) > 0.0 -> item.optDouble("income", 0.0)
+                item.has("expense") && item.optDouble("expense", 0.0) > 0.0 -> item.optDouble("expense", 0.0)
+                else -> item.optDouble("amount", 0.0)
+            }
             val createdAt = item.optString("createdAt", "")
 
             if (date.isNotBlank() || amount > 0.0) {
@@ -173,6 +308,40 @@ class SheetsApiService(
         }
 
         return list
+    }
+
+    suspend fun fetchPdfExportUrl(webAppUrl: String): Result<String> {
+        return withContext(Dispatchers.IO) {
+            try {
+                if (webAppUrl.isBlank()) {
+                    return@withContext Result.failure(IllegalArgumentException("Google Apps Script URL is empty"))
+                }
+                val urlWithParam = if (webAppUrl.contains("?")) "$webAppUrl&action=pdf" else "$webAppUrl?action=pdf"
+                val request = Request.Builder()
+                    .url(urlWithParam)
+                    .get()
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    val body = response.body?.string().orEmpty()
+                    if (response.isSuccessful && body.isNotBlank()) {
+                        val json = JSONObject(body)
+                        val pdfUrl = json.optString("pdfUrl", "")
+                        if (pdfUrl.isNotBlank()) {
+                            return@withContext Result.success(pdfUrl)
+                        }
+                        val ssUrl = json.optString("spreadsheetUrl", "")
+                        if (ssUrl.isNotBlank()) {
+                            val derived = ssUrl.replace(Regex("""/edit.*$"""), "") + "/export?format=pdf&size=letter&portrait=true&fitw=true&gridlines=true"
+                            return@withContext Result.success(derived)
+                        }
+                    }
+                    Result.failure(Exception("PDF export URL not provided by backend"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
     }
 
     companion object {

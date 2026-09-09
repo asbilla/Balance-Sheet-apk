@@ -23,6 +23,12 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE date = :date ORDER BY timestamp DESC")
     fun getTransactionsByDate(date: String): Flow<List<TransactionEntity>>
 
+    @Query("SELECT * FROM transactions WHERE uuid = :uuid LIMIT 1")
+    suspend fun getTransactionByUuid(uuid: String): TransactionEntity?
+
+    @Query("SELECT * FROM transactions WHERE date = :date AND type = :type ORDER BY timestamp DESC")
+    suspend fun getTransactionsByDateAndType(date: String, type: String): List<TransactionEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTransaction(transaction: TransactionEntity): Long
 
@@ -43,6 +49,12 @@ interface TransactionDao {
 
     @Query("DELETE FROM transactions WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM transactions WHERE uuid = :uuid")
+    suspend fun deleteByUuid(uuid: String)
+
+    @Query("DELETE FROM transactions WHERE date = :date AND type = :type")
+    suspend fun deleteByDateAndType(date: String, type: String)
 
     @Query("DELETE FROM transactions")
     suspend fun clearAll()

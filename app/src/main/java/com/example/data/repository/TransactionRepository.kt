@@ -20,6 +20,21 @@ class TransactionRepository(
 
     val allTransactions: Flow<List<TransactionEntity>> = dao.getAllTransactions()
     val unsyncedCount: Flow<Int> = dao.getUnsyncedCount()
+    val businessProfile = preferences.businessProfileFlow
+
+    fun getBusinessProfile(): com.example.data.pref.BusinessProfile = preferences.getBusinessProfile()
+
+    suspend fun saveBusinessProfile(
+        profile: com.example.data.pref.BusinessProfile,
+        syncToSheets: Boolean = true
+    ): Result<String> {
+        preferences.setBusinessProfile(profile)
+        val url = getWebAppUrl()
+        if (syncToSheets && url.isNotBlank() && !url.contains("offline-demo")) {
+            return apiService.postBusinessProfile(url, profile)
+        }
+        return Result.success("Saved locally")
+    }
 
     suspend fun saveTransaction(
         type: String,
@@ -82,6 +97,11 @@ class TransactionRepository(
         return apiService.testConnection(url)
     }
 
+    suspend fun fetchPdfExportUrl(): Result<String> {
+        val url = getWebAppUrl()
+        return apiService.fetchPdfExportUrl(url)
+    }
+
     fun getWebAppUrl(): String = preferences.getWebAppUrl()
 
     fun setWebAppUrl(url: String) = preferences.setWebAppUrl(url)
@@ -90,6 +110,108 @@ class TransactionRepository(
 
     suspend fun deleteTransaction(entity: TransactionEntity) {
         dao.deleteTransaction(entity)
+    }
+
+    suspend fun updateTransactionAmount(
+        id: String,
+        date: String,
+        type: String,
+        category: String,
+        newAmount: Double
+    ): Result<String> {
+        // 1. Update in local Room database
+        val existing = dao.getTransactionByUuid(id)
+        val targetUuid = if (existing != null) {
+            val updated = existing.copy(
+                amount = newAmount,
+                category = category.ifBlank { existing.category },
+                isSynced = false
+            )
+            dao.updateTransaction(updated)
+            existing.uuid
+        } else {
+            val byDateAndType = dao.getTransactionsByDateAndType(date, type).firstOrNull()
+            if (byDateAndType != null) {
+                val updated = byDateAndType.copy(
+                    amount = newAmount,
+                    category = category.ifBlank { byDateAndType.category },
+                    isSynced = false
+                )
+                dao.updateTransaction(updated)
+                byDateAndType.uuid
+            } else {
+                val assignedUuid = if (id.isNotBlank()) id else java.util.UUID.randomUUID().toString()
+                val newEntity = TransactionEntity(
+                    uuid = assignedUuid,
+                    date = date,
+                    timestamp = System.currentTimeMillis(),
+                    type = type,
+                    category = category,
+                    amount = newAmount,
+                    isSynced = false
+                )
+                dao.insertTransaction(newEntity)
+                assignedUuid
+            }
+        }
+
+        // 2. Update to Google Sheets spreadsheet immediately if connected
+        val url = getWebAppUrl()
+        if (url.isNotBlank() && !url.contains("offline-demo")) {
+            val remoteResult = apiService.updateTransactionOnSheets(
+                webAppUrl = url,
+                id = targetUuid,
+                date = date,
+                type = type,
+                amount = newAmount,
+                notes = category
+            )
+            if (remoteResult.isSuccess) {
+                dao.markAsSyncedByUuid(listOf(targetUuid))
+                return Result.success("Amount updated and synced to spreadsheet!")
+            } else {
+                SyncWorker.enqueueSync(context)
+                return Result.success("Amount updated locally; queued for Sheets sync.")
+            }
+        } else {
+            return Result.success("Amount updated locally.")
+        }
+    }
+
+    suspend fun deleteTransactionPermanently(
+        id: String,
+        date: String,
+        type: String
+    ): Result<String> {
+        // 1. Delete from local Room database
+        if (id.isNotBlank()) {
+            dao.deleteByUuid(id)
+            val parsedId = id.toLongOrNull()
+            if (parsedId != null) {
+                dao.deleteById(parsedId)
+            }
+        }
+        if (date.isNotBlank() && type.isNotBlank()) {
+            dao.deleteByDateAndType(date, type)
+        }
+
+        // 2. Delete from Google Sheets if configured
+        val url = getWebAppUrl()
+        if (url.isNotBlank() && !url.contains("offline-demo")) {
+            val remoteResult = apiService.deleteTransactionOnSheets(
+                webAppUrl = url,
+                id = id,
+                date = date,
+                type = type
+            )
+            if (remoteResult.isSuccess) {
+                return Result.success("Transaction deleted from local database & Google Sheet!")
+            } else {
+                return Result.success("Deleted locally. Note: ${remoteResult.exceptionOrNull()?.message}")
+            }
+        } else {
+            return Result.success("Transaction deleted locally.")
+        }
     }
 
     companion object {

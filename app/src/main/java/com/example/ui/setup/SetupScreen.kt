@@ -2,6 +2,7 @@ package com.example.ui.setup
 
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -21,20 +22,27 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Badge
+import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -64,6 +72,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.pref.BusinessProfile
 import com.example.data.repository.TransactionRepository
 import com.example.ui.theme.BalanceBlue
 import com.example.ui.theme.IncomeGreen
@@ -80,6 +89,13 @@ fun SetupScreen(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
+
+    val initialProfile = remember { repository.getBusinessProfile() }
+    var businessName by remember { mutableStateOf(initialProfile.businessName) }
+    var abnAcn by remember { mutableStateOf(initialProfile.abnAcn) }
+    var businessAddress by remember { mutableStateOf(initialProfile.businessAddress) }
+    var phoneMobile by remember { mutableStateOf(initialProfile.phoneMobile) }
+    var email by remember { mutableStateOf(initialProfile.email) }
 
     var urlInput by remember { mutableStateOf(repository.getWebAppUrl()) }
     var isTesting by remember { mutableStateOf(false) }
@@ -112,7 +128,202 @@ fun SetupScreen(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            // Header card with branding
+            // 1. BUSINESS PROFILE DETAILS (ON TOP AS REQUESTED)
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(BalanceBlue),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Business,
+                                contentDescription = "Business Profile",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "Business Details & Registration",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 17.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Saved to Sheet1 of Spreadsheet & PDF Header",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    // 1st for Business Name:
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "1st for Business Name:",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        OutlinedTextField(
+                            value = businessName,
+                            onValueChange = { businessName = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("business_name_input"),
+                            placeholder = {
+                                Text("Enter Business Name (e.g., Sunshine Bakery)", fontSize = 13.sp)
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Storefront,
+                                    contentDescription = "Business Name",
+                                    tint = BalanceBlue
+                                )
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            singleLine = true
+                        )
+                    }
+
+                    // 2nd for ABN/ACN:
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "2nd for ABN/ACN:",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        OutlinedTextField(
+                            value = abnAcn,
+                            onValueChange = { abnAcn = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("abn_acn_input"),
+                            placeholder = {
+                                Text("Enter ABN or ACN (e.g., ABN 12 345 678 901)", fontSize = 13.sp)
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Badge,
+                                    contentDescription = "ABN/ACN",
+                                    tint = BalanceBlue
+                                )
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            singleLine = true
+                        )
+                    }
+
+                    // 3rd for Business Address:
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "3rd for Business Address:",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        OutlinedTextField(
+                            value = businessAddress,
+                            onValueChange = { businessAddress = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("business_address_input"),
+                            placeholder = {
+                                Text("Enter Business Address (e.g., 120 Collins St, Melbourne VIC)", fontSize = 13.sp)
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.LocationOn,
+                                    contentDescription = "Business Address",
+                                    tint = BalanceBlue
+                                )
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            maxLines = 2
+                        )
+                    }
+
+                    // 4th for Phone/Mobile:
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "4th for Phone/Mobile:",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        OutlinedTextField(
+                            value = phoneMobile,
+                            onValueChange = { phoneMobile = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("phone_mobile_input"),
+                            placeholder = {
+                                Text("Enter Phone or Mobile (e.g., +61 400 123 456)", fontSize = 13.sp)
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Phone,
+                                    contentDescription = "Phone/Mobile",
+                                    tint = BalanceBlue
+                                )
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            singleLine = true
+                        )
+                    }
+
+                    // 5th for email address:
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "5th for email address:",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        OutlinedTextField(
+                            value = email,
+                            onValueChange = { email = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("email_address_input"),
+                            placeholder = {
+                                Text("Enter Email Address (e.g., contact@sunshinebakery.com)", fontSize = 13.sp)
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Email,
+                                    contentDescription = "Email Address",
+                                    tint = BalanceBlue
+                                )
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            singleLine = true
+                        )
+                    }
+                }
+            }
+
+            // 2. GOOGLE SHEETS BACKEND CONNECTION
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
@@ -321,8 +532,18 @@ fun SetupScreen(
                         Toast.makeText(context, "Please enter a valid Web App URL", Toast.LENGTH_SHORT).show()
                         return@Button
                     }
+                    val profile = BusinessProfile(
+                        businessName = businessName.trim(),
+                        abnAcn = abnAcn.trim(),
+                        businessAddress = businessAddress.trim(),
+                        phoneMobile = phoneMobile.trim(),
+                        email = email.trim()
+                    )
                     repository.setWebAppUrl(trimmed)
-                    Toast.makeText(context, "Configuration Saved!", Toast.LENGTH_SHORT).show()
+                    scope.launch {
+                        repository.saveBusinessProfile(profile, syncToSheets = trimmed.startsWith("https://script.google.com/"))
+                    }
+                    Toast.makeText(context, "Business Profile & Configuration Saved!", Toast.LENGTH_SHORT).show()
                     onConfigured()
                 },
                 modifier = Modifier
@@ -351,9 +572,19 @@ fun SetupScreen(
             if (!repository.isConfigured()) {
                 TextButton(
                     onClick = {
+                        val profile = BusinessProfile(
+                            businessName = businessName.trim(),
+                            abnAcn = abnAcn.trim(),
+                            businessAddress = businessAddress.trim(),
+                            phoneMobile = phoneMobile.trim(),
+                            email = email.trim()
+                        )
                         // User can continue with offline local database
                         repository.setWebAppUrl("https://script.google.com/macros/s/offline-demo/exec")
-                        Toast.makeText(context, "Offline Mode: Entries will be stored in Room DB", Toast.LENGTH_LONG).show()
+                        scope.launch {
+                            repository.saveBusinessProfile(profile, syncToSheets = false)
+                        }
+                        Toast.makeText(context, "Offline Mode: Business details stored in local database", Toast.LENGTH_LONG).show()
                         onConfigured()
                     },
                     modifier = Modifier.align(Alignment.CenterHorizontally)
