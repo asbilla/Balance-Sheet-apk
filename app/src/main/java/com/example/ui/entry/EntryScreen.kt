@@ -2,6 +2,22 @@ package com.example.ui.entry
 
 import android.app.DatePickerDialog
 import android.widget.Toast
+import android.content.Intent
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.example.data.pref.BusinessProfile
+import java.text.DecimalFormat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -111,6 +127,26 @@ fun EntryScreen(
         mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
     }
     var isSaving by remember { mutableStateOf(false) }
+
+    // Cart State
+    var cartItems by remember { mutableStateOf<List<CartItem>>(emptyList()) }
+    var showInvoice by remember { mutableStateOf(false) }
+    var lastSavedTransactionId by remember { mutableStateOf("") }
+    val businessProfile by repository.businessProfile.collectAsState(initial = BusinessProfile())
+
+    val cartTotal = remember(cartItems) {
+        cartItems.sumOf { it.product.price * it.quantity }
+    }
+
+    // Update amountText whenever cartTotal changes
+    LaunchedEffect(cartTotal) {
+        if (entryType == "Daily Income" && cartItems.isNotEmpty()) {
+            amountText = String.format(Locale.US, "%.2f", cartTotal)
+            notesText = cartItems.joinToString("\n") { 
+                "${it.product.name} x${it.quantity} ($${String.format(Locale.US, "%.2f", it.product.price * it.quantity)})" 
+            }
+        }
+    }
 
     // POS Products State (for "Daily Income")
     var products by remember { mutableStateOf<List<ProductItem>>(emptyList()) }
@@ -339,18 +375,16 @@ fun EntryScreen(
                                             .weight(1f)
                                             .clip(RoundedCornerShape(12.dp))
                                             .clickable {
-                                                if (isSelected) {
-                                                    // Increment quantity on subsequent taps
-                                                    posQuantity++
-                                                    val total = item.price * posQuantity
-                                                    amountText = String.format(Locale.US, "%.2f", total)
-                                                    notesText = "${item.name} (x$posQuantity)"
+                                                val existingIndex = cartItems.indexOfFirst { it.product.name == item.name }
+                                                if (existingIndex != -1) {
+                                                    val newList = cartItems.toMutableList()
+                                                    val current = newList[existingIndex]
+                                                    newList[existingIndex] = current.copy(quantity = current.quantity + 1)
+                                                    cartItems = newList
                                                 } else {
-                                                    selectedProduct = item
-                                                    posQuantity = 1
-                                                    amountText = String.format(Locale.US, "%.2f", item.price)
-                                                    notesText = item.name
+                                                    cartItems = cartItems + CartItem(item, 1)
                                                 }
+                                                selectedProduct = item
                                             }
                                             .border(
                                                 width = if (isSelected) 2.dp else 1.dp,
@@ -406,77 +440,57 @@ fun EntryScreen(
                             }
                         }
 
-                        // Selected Item Quantity Controller (Point of Sale Bar)
-                        AnimatedVisibility(visible = selectedProduct != null) {
-                            selectedProduct?.let { prod ->
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column {
-                                            Text(
-                                                text = "Selected: ${prod.name}",
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                            Text(
-                                                text = "Base rate: $${String.format(Locale.US, "%.2f", prod.price)} each",
-                                                fontSize = 11.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
+                        // Cart Section
+                        if (cartItems.isNotEmpty()) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(imageVector = Icons.Default.ShoppingCart, contentDescription = null, tint = accentColor, modifier = Modifier.size(20.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(text = "Current Cart", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                    }
 
-                                        // Quantity Stepper
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            IconButton(
-                                                onClick = {
-                                                    if (posQuantity > 1) {
-                                                        posQuantity--
-                                                        val total = prod.price * posQuantity
-                                                        amountText = String.format(Locale.US, "%.2f", total)
-                                                        notesText = if (posQuantity > 1) "${prod.name} (x$posQuantity)" else prod.name
-                                                    }
-                                                },
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Remove,
-                                                    contentDescription = "Decrease",
-                                                    modifier = Modifier.size(16.dp)
+                                    cartItems.forEachIndexed { index, cartItem ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(text = cartItem.product.name, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                                Text(
+                                                    text = "${cartItem.quantity} x $${String.format(Locale.US, "%.2f", cartItem.product.price)}",
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                             }
-
-                                            Text(
-                                                text = "Qty: $posQuantity",
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 13.sp,
-                                                modifier = Modifier.padding(horizontal = 8.dp)
-                                            )
-
-                                            IconButton(
-                                                onClick = {
-                                                    posQuantity++
-                                                    val total = prod.price * posQuantity
-                                                    amountText = String.format(Locale.US, "%.2f", total)
-                                                    notesText = "${prod.name} (x$posQuantity)"
-                                                },
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Add,
-                                                    contentDescription = "Increase",
-                                                    modifier = Modifier.size(16.dp)
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = "$${String.format(Locale.US, "%.2f", cartItem.product.price * cartItem.quantity)}",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 13.sp
                                                 )
+                                                IconButton(onClick = {
+                                                    val newList = cartItems.toMutableList()
+                                                    newList.removeAt(index)
+                                                    cartItems = newList
+                                                }) {
+                                                    Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = ExpenseRed, modifier = Modifier.size(18.dp))
+                                                }
                                             }
                                         }
+                                        if (index < cartItems.size - 1) HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                    }
+
+                                    HorizontalDivider(thickness = 1.dp)
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(text = "Total Payable", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                                        Text(text = "$${String.format(Locale.US, "%.2f", cartTotal)}", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = accentColor)
                                     }
                                 }
                             }
@@ -647,7 +661,7 @@ fun EntryScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Prominent Save Button
+            // Prominent Checkout / Save Button
             Button(
                 onClick = {
                     val amount = amountText.toDoubleOrNull()
@@ -663,14 +677,20 @@ fun EntryScreen(
                     isSaving = true
                     scope.launch {
                         try {
-                            repository.saveTransaction(
+                            val id = repository.saveTransaction(
                                 type = entryType,
                                 amount = amount,
                                 category = notesText,
                                 date = selectedDate
                             )
-                            Toast.makeText(context, "Entry Saved Locally", Toast.LENGTH_SHORT).show()
-                            onNavigateBack()
+                            lastSavedTransactionId = id.toString()
+                            Toast.makeText(context, "Entry Saved Successfully", Toast.LENGTH_SHORT).show()
+                            
+                            if (entryType == "Daily Income" && cartItems.isNotEmpty()) {
+                                showInvoice = true
+                            } else {
+                                onNavigateBack()
+                            }
                         } catch (e: Exception) {
                             Toast.makeText(context, "Failed to save: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
                         } finally {
@@ -684,7 +704,7 @@ fun EntryScreen(
                     .testTag("save_entry_button"),
                 enabled = !isSaving && amountText.isNotBlank() && notesText.isNotBlank(),
                 shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = accentColor)
+                colors = ButtonDefaults.buttonColors(containerColor = if (entryType == "Daily Income") BalanceBlue else accentColor)
             ) {
                 if (isSaving) {
                     CircularProgressIndicator(
@@ -693,17 +713,17 @@ fun EntryScreen(
                         color = Color.White
                     )
                     Spacer(modifier = Modifier.width(10.dp))
-                    Text("Saving...", color = Color.White)
+                    Text("Processing...", color = Color.White)
                 } else {
                     Icon(
-                        imageVector = Icons.Default.Check,
+                        imageVector = if (entryType == "Daily Income") Icons.Default.PointOfSale else Icons.Default.Check,
                         contentDescription = "Save",
                         tint = Color.White,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Save $entryType",
+                        text = if (entryType == "Daily Income") "Checkout / Cash Sale" else "Save $entryType",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -711,6 +731,20 @@ fun EntryScreen(
                 }
             }
         }
+    }
+
+    // Invoice Dialog
+    if (showInvoice) {
+        InvoiceDialog(
+            profile = businessProfile,
+            items = cartItems,
+            total = cartTotal,
+            date = selectedDate,
+            onDismiss = {
+                showInvoice = false
+                onNavigateBack()
+            }
+        )
     }
 
     // Add Custom POS Product Dialog
@@ -806,6 +840,158 @@ fun EntryScreen(
         )
     }
 }
+
+@Composable
+fun InvoiceDialog(
+    profile: BusinessProfile,
+    items: List<CartItem>,
+    total: Double,
+    date: String,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val formattedDate = remember(date) {
+        try {
+            val parser = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            val formatter = SimpleDateFormat("EEE, dd MMM yyyy", Locale.US)
+            parser.parse(date)?.let { formatter.format(it) } ?: date
+        } catch (e: Exception) { date }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = Color.White
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onDismiss) {
+                        Icon(imageVector = Icons.Default.Close, contentDescription = "Close")
+                    }
+                    Text(
+                        text = "TAX INVOICE",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = BalanceBlue
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Business Info
+                Text(text = profile.businessName.uppercase(), fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                if (profile.abnAcn.isNotBlank()) Text(text = "ABN: ${profile.abnAcn}", fontSize = 12.sp)
+                if (profile.businessAddress.isNotBlank()) Text(text = profile.businessAddress, fontSize = 12.sp)
+                if (profile.phoneMobile.isNotBlank()) Text(text = "Tel: ${profile.phoneMobile}", fontSize = 12.sp)
+                if (profile.email.isNotBlank()) Text(text = profile.email, fontSize = 12.sp)
+
+                Spacer(modifier = Modifier.height(16.dp))
+                HorizontalDivider(thickness = 1.dp, color = Color.Black)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(text = "Date: $formattedDate", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(text = "Receipt: #${System.currentTimeMillis().toString().takeLast(6)}", fontSize = 13.sp)
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Table Header
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = "Description", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text(text = "Qty", modifier = Modifier.width(40.dp), fontWeight = FontWeight.Bold, fontSize = 12.sp, textAlign = TextAlign.Center)
+                    Text(text = "Total", modifier = Modifier.width(80.dp), fontWeight = FontWeight.Bold, fontSize = 12.sp, textAlign = TextAlign.End)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider(thickness = 0.5.dp, color = Color.Gray)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Items
+                items.forEach { cartItem ->
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = cartItem.product.name, fontSize = 13.sp)
+                            Text(text = "@ $${String.format(Locale.US, "%.2f", cartItem.product.price)}", fontSize = 10.sp, color = Color.Gray)
+                        }
+                        Text(text = cartItem.quantity.toString(), modifier = Modifier.width(40.dp), fontSize = 13.sp, textAlign = TextAlign.Center)
+                        Text(text = "$${String.format(Locale.US, "%.2f", cartItem.product.price * cartItem.quantity)}", modifier = Modifier.width(80.dp), fontSize = 13.sp, textAlign = TextAlign.End, fontWeight = FontWeight.Medium)
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+                HorizontalDivider(thickness = 1.dp, color = Color.Black)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(text = "GRAND TOTAL", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+                    Text(text = "$${String.format(Locale.US, "%.2f", total)}", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = BalanceBlue)
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
+                Text(text = "Thank you for your business!", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = Color.Gray, fontSize = 14.sp)
+                Spacer(modifier = Modifier.height(48.dp))
+
+                // Share Button
+                Button(
+                    onClick = {
+                        val shareText = buildString {
+                            appendLine("TAX INVOICE - ${profile.businessName}")
+                            appendLine("Date: $formattedDate")
+                            appendLine("-------------------------")
+                            items.forEach {
+                                appendLine("${it.product.name} x${it.quantity} - $${String.format(Locale.US, "%.2f", it.product.price * it.quantity)}")
+                            }
+                            appendLine("-------------------------")
+                            appendLine("TOTAL: $${String.format(Locale.US, "%.2f", total)}")
+                            appendLine("Thank you!")
+                        }
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, "Invoice from ${profile.businessName}")
+                            putExtra(Intent.EXTRA_TEXT, shareText)
+                        }
+                        context.startActivity(Intent.createChooser(intent, "Share Invoice via"))
+                    },
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = BalanceBlue)
+                ) {
+                    Icon(imageVector = Icons.Default.Share, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("SHARE INVOICE", fontWeight = FontWeight.Bold)
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    border = BorderStroke(1.dp, Color.Gray)
+                ) {
+                    Text("BACK TO DASHBOARD", color = Color.Gray)
+                }
+            }
+        }
+    }
+}
+
+data class CartItem(
+    val product: ProductItem,
+    val quantity: Int
+)
 
 private data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 

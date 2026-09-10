@@ -1,4 +1,7 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.util.Date
+import java.util.Locale
+import java.text.SimpleDateFormat
 
 plugins {
   alias(libs.plugins.android.application)
@@ -17,10 +20,21 @@ android {
     applicationId = "com.aistudio.dailyreport.bzrp"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    
+    // Auto-versioning based on timestamp
+    val now = Date()
+    val timestamp = now.time
+    val formattedDate = SimpleDateFormat("yyyyMMdd.HHmm", Locale.US).format(now)
+    
+    versionCode = (timestamp / 10000).toInt() // Unique version code
+    versionName = "1.0.$formattedDate" 
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    
+    // Custom output naming
+    base {
+        archivesName.set("DailyReport")
+    }
   }
 
   signingConfigs {
