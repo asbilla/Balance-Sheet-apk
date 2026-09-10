@@ -97,12 +97,36 @@ class AppPreferences(context: Context) {
 
     private fun getDefaultProducts(): List<com.example.data.model.ProductItem> {
         return listOf(
-            com.example.data.model.ProductItem("Espresso / Coffee", 4.50, "Beverage"),
-            com.example.data.model.ProductItem("Breakfast Combo", 12.50, "Food"),
-            com.example.data.model.ProductItem("Lunch Special", 18.00, "Food"),
-            com.example.data.model.ProductItem("Retail Goods", 25.00, "Goods"),
-            com.example.data.model.ProductItem("Service / Labor", 60.00, "Service"),
-            com.example.data.model.ProductItem("Wholesale Pack", 150.00, "Wholesale")
+            com.example.data.model.ProductItem("Eyebrows", 10.00, "Threading"),
+            com.example.data.model.ProductItem("Uper Lips", 5.00, "Threading"),
+            com.example.data.model.ProductItem("Chin", 5.00, "Threading"),
+            com.example.data.model.ProductItem("Forehead", 5.00, "Threading"),
+            com.example.data.model.ProductItem("Sideburns", 12.00, "Threading"),
+            com.example.data.model.ProductItem("Neck", 5.00, "Threading"),
+            com.example.data.model.ProductItem("Full Face", 35.00, "Threading"),
+            com.example.data.model.ProductItem("Underarms", 15.00, "Body Waxing"),
+            com.example.data.model.ProductItem("Full Arms", 30.00, "Body Waxing"),
+            com.example.data.model.ProductItem("1/2 Arms", 20.00, "Body Waxing"),
+            com.example.data.model.ProductItem("3/4 Arms", 25.00, "Body Waxing"),
+            com.example.data.model.ProductItem("Full Legs", 45.00, "Body Waxing"),
+            com.example.data.model.ProductItem("1/2 Legs w Knee", 25.00, "Body Waxing"),
+            com.example.data.model.ProductItem("1/2 Legs Below Knee", 20.00, "Body Waxing"),
+            com.example.data.model.ProductItem("Back", 25.00, "Body Waxing"),
+            com.example.data.model.ProductItem("1/2 Back", 20.00, "Body Waxing"),
+            com.example.data.model.ProductItem("Stomach", 20.00, "Body Waxing"),
+            com.example.data.model.ProductItem("Back of Nick", 15.00, "Body Waxing"),
+            com.example.data.model.ProductItem("Sideburns", 15.00, "Facial Waxing"),
+            com.example.data.model.ProductItem("Chun", 7.00, "Facial Waxing"),
+            com.example.data.model.ProductItem("Upper Lips", 7.00, "Facial Waxing"),
+            com.example.data.model.ProductItem("Neck", 7.00, "Facial Waxing"),
+            com.example.data.model.ProductItem("Eyebrow", 12.00, "Tinting"),
+            com.example.data.model.ProductItem("Eyelash", 20.00, "Tinting"),
+            com.example.data.model.ProductItem("EBT+ELT", 30.00, "Tinting"),
+            com.example.data.model.ProductItem("Henna (Herbal Henna + Oil)", 30.00, "Tinting"),
+            com.example.data.model.ProductItem("Henna (Herbal Henna + Oil)", 25.00, "Tinting"),
+            com.example.data.model.ProductItem("20min Clean Up (Cleanse, Scrub, Face Pack)", 20.00, "Herbal Facial (BYO)"),
+            com.example.data.model.ProductItem("Hair Oil Massage (10 min)", 15.00, "Hair Care (BYO)"),
+            com.example.data.model.ProductItem("Hand Henna", 10.00, "Hair Care (BYO)")
         )
     }
 

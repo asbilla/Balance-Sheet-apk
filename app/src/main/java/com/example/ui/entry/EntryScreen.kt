@@ -552,7 +552,7 @@ fun EntryScreen(
                     .testTag("notes_input"),
                 placeholder = {
                     Text(
-                        if (entryType == "Daily Income") "e.g., Espresso, Retail Item, Client Order..."
+                        if (entryType == "Daily Income") "e.g., Eyebrows, Full Arms, Facial Tinting..."
                         else "e.g., Office Supplies, Transport, Electricity..."
                     )
                 },

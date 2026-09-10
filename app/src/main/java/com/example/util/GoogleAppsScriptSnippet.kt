@@ -246,12 +246,36 @@ function getOrCreateProductsSheet(ss) {
     var timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "GMT", "dd-MM-yyyy a HH:mm");
     // Pre-populate with standard sample POS items
     var sampleProducts = [
-      ["Espresso / Coffee", 4.50, "Beverage", timestamp],
-      ["Breakfast Combo", 12.50, "Food", timestamp],
-      ["Lunch Special", 18.00, "Food", timestamp],
-      ["Retail Goods", 25.00, "Goods", timestamp],
-      ["Service / Labor (1 hr)", 60.00, "Service", timestamp],
-      ["Wholesale Pack", 150.00, "Wholesale", timestamp]
+      ["Eyebrows", 10.00, "Threading", timestamp],
+      ["Uper Lips", 5.00, "Threading", timestamp],
+      ["Chin", 5.00, "Threading", timestamp],
+      ["Forehead", 5.00, "Threading", timestamp],
+      ["Sideburns", 12.00, "Threading", timestamp],
+      ["Neck", 5.00, "Threading", timestamp],
+      ["Full Face", 35.00, "Threading", timestamp],
+      ["Underarms", 15.00, "Body Waxing", timestamp],
+      ["Full Arms", 30.00, "Body Waxing", timestamp],
+      ["1/2 Arms", 20.00, "Body Waxing", timestamp],
+      ["3/4 Arms", 25.00, "Body Waxing", timestamp],
+      ["Full Legs", 45.00, "Body Waxing", timestamp],
+      ["1/2 Legs w Knee", 25.00, "Body Waxing", timestamp],
+      ["1/2 Legs Below Knee", 20.00, "Body Waxing", timestamp],
+      ["Back", 25.00, "Body Waxing", timestamp],
+      ["1/2 Back", 20.00, "Body Waxing", timestamp],
+      ["Stomach", 20.00, "Body Waxing", timestamp],
+      ["Back of Nick", 15.00, "Body Waxing", timestamp],
+      ["Sideburns", 15.00, "Facial Waxing", timestamp],
+      ["Chun", 7.00, "Facial Waxing", timestamp],
+      ["Upper Lips", 7.00, "Facial Waxing", timestamp],
+      ["Neck", 7.00, "Facial Waxing", timestamp],
+      ["Eyebrow", 12.00, "Tinting", timestamp],
+      ["Eyelash", 20.00, "Tinting", timestamp],
+      ["EBT+ELT", 30.00, "Tinting", timestamp],
+      ["Henna (Herbal Henna + Oil)", 30.00, "Tinting", timestamp],
+      ["Henna (Herbal Henna + Oil)", 25.00, "Tinting", timestamp],
+      ["20min Clean Up (Cleanse, Scrub, Face Pack)", 20.00, "Herbal Facial (BYO)", timestamp],
+      ["Hair Oil Massage (10 min)", 15.00, "Hair Care (BYO)", timestamp],
+      ["Hand Henna -Starting From ${'$'}10", 10.00, "Hair Care (BYO)", timestamp]
     ];
 
     for (var p = 0; p < sampleProducts.length; p++) {
