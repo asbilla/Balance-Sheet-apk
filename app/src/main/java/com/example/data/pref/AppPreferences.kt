@@ -56,6 +56,56 @@ class AppPreferences(context: Context) {
         _webAppUrlFlow.value = ""
     }
 
+    fun getCachedProducts(): List<com.example.data.model.ProductItem> {
+        val rawJson = prefs.getString(KEY_CACHED_PRODUCTS, "") ?: ""
+        if (rawJson.isBlank()) {
+            return getDefaultProducts()
+        }
+        return try {
+            val array = org.json.JSONArray(rawJson)
+            val list = mutableListOf<com.example.data.model.ProductItem>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                list.add(
+                    com.example.data.model.ProductItem(
+                        name = obj.optString("name", ""),
+                        price = obj.optDouble("price", 0.0),
+                        category = obj.optString("category", "")
+                    )
+                )
+            }
+            if (list.isEmpty()) getDefaultProducts() else list
+        } catch (_: Exception) {
+            getDefaultProducts()
+        }
+    }
+
+    fun setCachedProducts(products: List<com.example.data.model.ProductItem>) {
+        try {
+            val array = org.json.JSONArray()
+            for (p in products) {
+                val obj = org.json.JSONObject().apply {
+                    put("name", p.name)
+                    put("price", p.price)
+                    put("category", p.category)
+                }
+                array.put(obj)
+            }
+            prefs.edit().putString(KEY_CACHED_PRODUCTS, array.toString()).apply()
+        } catch (_: Exception) {}
+    }
+
+    private fun getDefaultProducts(): List<com.example.data.model.ProductItem> {
+        return listOf(
+            com.example.data.model.ProductItem("Espresso / Coffee", 4.50, "Beverage"),
+            com.example.data.model.ProductItem("Breakfast Combo", 12.50, "Food"),
+            com.example.data.model.ProductItem("Lunch Special", 18.00, "Food"),
+            com.example.data.model.ProductItem("Retail Goods", 25.00, "Goods"),
+            com.example.data.model.ProductItem("Service / Labor", 60.00, "Service"),
+            com.example.data.model.ProductItem("Wholesale Pack", 150.00, "Wholesale")
+        )
+    }
+
     companion object {
         private const val PREF_NAME = "business_reporting_prefs"
         private const val KEY_WEB_APP_URL = "google_apps_script_url"
@@ -64,6 +114,7 @@ class AppPreferences(context: Context) {
         private const val KEY_BUSINESS_ADDRESS = "business_address"
         private const val KEY_PHONE_MOBILE = "phone_mobile"
         private const val KEY_EMAIL = "email_address"
+        private const val KEY_CACHED_PRODUCTS = "cached_products_json"
 
         @Volatile
         private var INSTANCE: AppPreferences? = null

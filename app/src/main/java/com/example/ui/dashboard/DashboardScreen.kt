@@ -84,12 +84,15 @@ fun DashboardScreen(
     val unsyncedCount by repository.unsyncedCount.collectAsStateWithLifecycle(initialValue = 0)
     val businessProfile by repository.businessProfile.collectAsStateWithLifecycle(initialValue = repository.getBusinessProfile())
 
-    val todayDate = remember {
+    val todayIso = remember {
+        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+    }
+    val todayDisplay = remember {
         SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date())
     }
 
-    // Calculate today's summary
-    val todayTransactions = transactions.filter { it.date == todayDate }
+    // Calculate today's summary supporting both date formats
+    val todayTransactions = transactions.filter { it.date == todayIso || it.date == todayDisplay }
     val todayIncome = todayTransactions.filter { it.type == "Daily Income" }.sumOf { it.amount }
     val todayExpense = todayTransactions.filter { it.type == "Expense" }.sumOf { it.amount }
     val todayBills = todayTransactions.filter { it.type == "Bill" }.sumOf { it.amount }

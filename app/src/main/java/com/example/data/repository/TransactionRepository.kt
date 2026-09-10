@@ -190,8 +190,8 @@ class TransactionRepository(
             if (parsedId != null) {
                 dao.deleteById(parsedId)
             }
-        }
-        if (date.isNotBlank() && type.isNotBlank()) {
+        } else if (date.isNotBlank() && type.isNotBlank()) {
+            // Only fallback to date & type if id is not available
             dao.deleteByDateAndType(date, type)
         }
 
@@ -212,6 +212,74 @@ class TransactionRepository(
         } else {
             return Result.success("Transaction deleted locally.")
         }
+    }
+
+    fun getCachedProducts(): List<com.example.data.model.ProductItem> = preferences.getCachedProducts()
+
+    suspend fun getProducts(forceRefresh: Boolean = false): List<com.example.data.model.ProductItem> {
+        val cached = preferences.getCachedProducts()
+        val url = getWebAppUrl()
+        if (url.isBlank() || url.contains("offline-demo")) {
+            return cached
+        }
+
+        if (forceRefresh || cached.isEmpty()) {
+            val result = apiService.fetchProducts(url)
+            if (result.isSuccess) {
+                val remoteProducts = result.getOrDefault(emptyList())
+                if (remoteProducts.isNotEmpty()) {
+                    preferences.setCachedProducts(remoteProducts)
+                    return remoteProducts
+                }
+            }
+        }
+        return cached
+    }
+
+    suspend fun refreshProductsFromSheets(): Result<List<com.example.data.model.ProductItem>> {
+        val url = getWebAppUrl()
+        if (url.isBlank()) {
+            return Result.failure(IllegalStateException("Google Apps Script URL is not configured"))
+        }
+        val result = apiService.fetchProducts(url)
+        if (result.isSuccess) {
+            val remoteProducts = result.getOrDefault(emptyList())
+            if (remoteProducts.isNotEmpty()) {
+                preferences.setCachedProducts(remoteProducts)
+            } else {
+                // If remote is empty, attempt to push defaults
+                val defaults = preferences.getCachedProducts()
+                syncProductsToSheets(defaults)
+            }
+        }
+        return result
+    }
+
+    suspend fun syncProductsToSheets(products: List<com.example.data.model.ProductItem>) {
+        val url = getWebAppUrl()
+        if (url.isBlank() || url.contains("offline-demo")) return
+        
+        // Push each product to sheets
+        products.forEach { product ->
+            apiService.postProduct(url, product)
+        }
+    }
+
+    suspend fun saveProduct(product: com.example.data.model.ProductItem): Result<String> {
+        val current = preferences.getCachedProducts().toMutableList()
+        val existingIndex = current.indexOfFirst { it.name.equals(product.name, ignoreCase = true) }
+        if (existingIndex >= 0) {
+            current[existingIndex] = product
+        } else {
+            current.add(product)
+        }
+        preferences.setCachedProducts(current)
+
+        val url = getWebAppUrl()
+        if (url.isNotBlank() && !url.contains("offline-demo")) {
+            return apiService.postProduct(url, product)
+        }
+        return Result.success("Saved to local products cache")
     }
 
     companion object {

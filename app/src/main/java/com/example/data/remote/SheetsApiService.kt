@@ -310,6 +310,118 @@ class SheetsApiService(
         return list
     }
 
+    suspend fun fetchProducts(webAppUrl: String): Result<List<com.example.data.model.ProductItem>> {
+        return withContext(Dispatchers.IO) {
+            try {
+                if (webAppUrl.isBlank()) {
+                    return@withContext Result.failure(IllegalArgumentException("Google Apps Script URL is empty"))
+                }
+                val urlWithParam = if (webAppUrl.contains("?")) "$webAppUrl&action=get_products" else "$webAppUrl?action=get_products"
+                val request = Request.Builder()
+                    .url(urlWithParam)
+                    .get()
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    val body = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        return@withContext Result.failure(Exception("HTTP Error ${response.code}: $body"))
+                    }
+
+                    val products = parseProductsJson(body)
+                    Result.success(products)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error fetching products from Sheets", e)
+                Result.failure(e)
+            }
+        }
+    }
+
+    private fun parseProductsJson(jsonString: String): List<com.example.data.model.ProductItem> {
+        val list = mutableListOf<com.example.data.model.ProductItem>()
+        val trimmed = jsonString.trim()
+        if (trimmed.isBlank()) return list
+
+        try {
+            val jsonArray: JSONArray = when {
+                trimmed.startsWith("[") -> JSONArray(trimmed)
+                trimmed.startsWith("{") -> {
+                    val obj = JSONObject(trimmed)
+                    when {
+                        obj.has("products") && obj.get("products") is JSONArray -> obj.getJSONArray("products")
+                        obj.has("items") && obj.get("items") is JSONArray -> obj.getJSONArray("items")
+                        obj.has("data") && obj.get("data") is JSONArray -> obj.getJSONArray("data")
+                        else -> JSONArray()
+                    }
+                }
+                else -> JSONArray()
+            }
+
+            for (i in 0 until jsonArray.length()) {
+                val item = jsonArray.optJSONObject(i) ?: continue
+                val name = when {
+                    item.has("name") -> item.optString("name", "")
+                    item.has("itemName") -> item.optString("itemName", "")
+                    item.has("title") -> item.optString("title", "")
+                    else -> ""
+                }.trim()
+
+                if (name.isBlank()) continue
+
+                val price = when {
+                    item.has("price") -> item.optDouble("price", 0.0)
+                    item.has("unitPrice") -> item.optDouble("unitPrice", 0.0)
+                    item.has("amount") -> item.optDouble("amount", 0.0)
+                    else -> 0.0
+                }
+
+                val category = item.optString("category", "").trim()
+                list.add(com.example.data.model.ProductItem(name = name, price = price, category = category))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing products JSON: $jsonString", e)
+        }
+
+        return list
+    }
+
+    suspend fun postProduct(webAppUrl: String, product: com.example.data.model.ProductItem): Result<String> {
+        return withContext(Dispatchers.IO) {
+            try {
+                if (webAppUrl.isBlank()) {
+                    return@withContext Result.failure(IllegalArgumentException("Google Apps Script URL is empty"))
+                }
+
+                val payload = JSONObject().apply {
+                    put("action", "save_product")
+                    put("name", product.name)
+                    put("price", product.price)
+                    put("category", product.category)
+                }
+
+                val requestBody = payload.toString().toRequestBody(jsonMediaType)
+                val request = Request.Builder()
+                    .url(webAppUrl)
+                    .post(requestBody)
+                    .addHeader("Content-Type", "application/json")
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    val responseBody = response.body?.string().orEmpty()
+                    if (response.isSuccessful) {
+                        Result.success(responseBody)
+                    } else {
+                        Result.failure(Exception("HTTP Error ${response.code}: $responseBody"))
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during postProduct", e)
+                Result.failure(e)
+            }
+        }
+    }
+
     suspend fun fetchPdfExportUrl(webAppUrl: String): Result<String> {
         return withContext(Dispatchers.IO) {
             try {

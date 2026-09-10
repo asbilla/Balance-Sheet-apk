@@ -3,113 +3,90 @@ package com.example.util
 object GoogleAppsScriptSnippet {
     val CODE: String = """
 /**
- * Daily Business Reporting Tool - Google Apps Script Backend
+ * Google Apps Script Backend for Daily Business Reporting Android App
  * 
- * FEATURES:
- * 1. Automatic Monthly Sheets: Groups transactions by month (e.g., Sep26, Oct26, Nov26, Jan27).
- *    Creates a new sheet automatically whenever a new month begins.
- * 2. Automatic Balance Carry-Over: Takes over ending balance from previous month (e.g., $2,540.00 from Sep26)
- *    and seamlessly continues balance calculation into the new month.
- * 3. Clean Columns:
- *    - Date
- *    - Type (Daily Income / Expense / Bill / Opening Balance)
- *    - Notes
- *    - Income
- *    - Expense & Bills
- *    - Balance (Auto-calculates all Income minus Expense & Bills)
- * 4. Hidden Metadata: ID and Created At columns are placed in columns G & H and automatically hidden.
- * 5. Auto-formatted currency ($#,##0.00) and frozen header rows.
- * 6. PDF Export API: Enables one-click downloading of the complete spreadsheet as a PDF.
- * 
- * DEPLOYMENT INSTRUCTIONS:
- * 1. In your Google Sheet, click Extensions > Apps Script.
- * 2. Delete any existing code in Code.gs and paste this entire code.
- * 3. Click 'Save' (floppy disk icon).
- * 4. Click 'Deploy' > 'New deployment' (or Manage deployments > Edit > New version).
- * 5. Click the gear icon next to 'Select type' and choose 'Web app'.
- * 6. Set:
- *    - Description: Monthly Business Reports API with Carry-Over Balance & PDF Export
- *    - Execute as: Me (<your email>)
- *    - Who has access: Anyone
- * 7. Click 'Deploy', authorize with your Google account, and copy the Web App URL (/exec).
+ * Features:
+ * - Dynamic Monthly Sheets (e.g., Sep26, Oct26, Nov26)
+ * - Chronological sorting by Date (Column A) with continuous balance carry-over
+ * - Automatic Opening Balance carried forward from previous month
+ * - Products Catalog Sheet ("Products") for Point of Sale (POS) item name & price suggestions
+ * - Business Profile stored in Sheet1 with formatted Last Updated timestamp (dd-MM-yyyy AM/PM HH:mm)
+ * - Balance formula: =SUM(Income) - SUM(Expense & Bills)
+ * - Robust date handling supporting dd-MM-yyyy and yyyy-MM-dd
+ * - Permanent deletion with balance formula recalculation
+ * - PDF Export support
  */
 
 var MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /**
- * Derives the month sheet name (e.g., 'Sep26', 'Oct26', 'Jan27') from a date string (YYYY-MM-DD) or Date object.
+ * Returns month sheet name like "Sep26" from a Date object or string.
  */
-function getMonthSheetName(dateInput) {
-  var d = new Date();
-  if (dateInput) {
-    if (dateInput instanceof Date) {
-      d = dateInput;
-    } else if (typeof dateInput === "string") {
-      var parts = dateInput.trim().split("-");
-      if (parts.length === 3) {
-        var year, month, day;
-        if (parts[0].length === 4) {
-          // YYYY-MM-DD
-          year = parseInt(parts[0], 10);
-          month = parseInt(parts[1], 10) - 1;
-          day = parseInt(parts[2], 10);
-        } else {
-          // DD-MM-YYYY
-          year = parseInt(parts[2], 10);
-          month = parseInt(parts[1], 10) - 1;
-          day = parseInt(parts[0], 10);
-        }
-        d = new Date(year, month, day);
+function getMonthSheetName(date) {
+  var d;
+  if (date instanceof Date) {
+    d = date;
+  } else if (typeof date === "string") {
+    var parts = date.trim().split("-");
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        // yyyy-MM-dd
+        d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
       } else {
-        var parsed = new Date(dateInput);
-        if (!isNaN(parsed.getTime())) d = parsed;
+        // dd-MM-yyyy
+        d = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
       }
+    } else {
+      d = new Date(date);
     }
+  } else {
+    d = new Date();
   }
+
+  if (isNaN(d.getTime())) d = new Date();
   var monthAbbr = MONTH_NAMES[d.getMonth()];
-  var year2Digits = String(d.getFullYear()).slice(-2);
-  return monthAbbr + year2Digits; // e.g. Sep26, Oct26, Jan27
+  var yearTwoDigits = String(d.getFullYear()).slice(-2);
+  return monthAbbr + yearTwoDigits;
 }
 
 /**
- * Calculates the previous chronological month sheet name.
- * e.g., 'Oct26' -> 'Sep26', 'Jan27' -> 'Dec26'
+ * Returns previous month's sheet name. E.g. "Sep26" -> "Aug26", "Jan26" -> "Dec25"
  */
 function getPreviousMonthSheetName(sheetName) {
-  if (!sheetName || sheetName.length < 5) return null;
   var abbr = sheetName.slice(0, 3);
   var yr = parseInt(sheetName.slice(3), 10);
   var idx = MONTH_NAMES.indexOf(abbr);
   if (idx === -1) return null;
 
-  var prevIdx = idx - 1;
-  var prevYr = yr;
-  if (prevIdx < 0) {
-    prevIdx = 11;
-    prevYr = (yr - 1 + 100) % 100;
+  if (idx === 0) {
+    return "Dec" + (yr - 1 < 10 ? "0" + (yr - 1) : String(yr - 1));
+  } else {
+    return MONTH_NAMES[idx - 1] + (yr < 10 ? "0" + yr : String(yr));
   }
-  var prevYrStr = (prevYr < 10 ? "0" : "") + prevYr;
-  return MONTH_NAMES[prevIdx] + prevYrStr;
 }
 
 /**
- * Retrieves the ending balance from the last row of the previous month's sheet.
+ * Gets the ending balance of the specified previous month sheet.
  */
 function getLastMonthEndingBalance(ss, prevSheetName) {
-  if (!prevSheetName) return 0.0;
+  if (!prevSheetName) return 0;
   var prevSheet = ss.getSheetByName(prevSheetName);
-  if (!prevSheet) return 0.0;
-  var lastRow = prevSheet.getLastRow();
-  if (lastRow <= 1) return 0.0;
+  if (!prevSheet) return 0;
 
-  // Column F (6) is the Balance column
-  var balanceVal = prevSheet.getRange(lastRow, 6).getValue();
-  var num = parseFloat(balanceVal);
-  return isNaN(num) ? 0.0 : num;
+  var lastRow = prevSheet.getLastRow();
+  if (lastRow < 2) return 0;
+
+  // Column F is Balance
+  var lastBalance = prevSheet.getRange(lastRow, 6).getValue();
+  if (typeof lastBalance === "number") {
+    return lastBalance;
+  }
+  var parsed = parseFloat(String(lastBalance).replace(/[^0-9.-]+/g, ""));
+  return isNaN(parsed) ? 0 : parsed;
 }
 
 /**
- * Ensures an Opening Balance row is placed on row 2 if carrying over from a previous month.
+ * Checks and inserts Opening Balance row if this is row 2 of a new monthly sheet.
  */
 function checkAndInsertOpeningBalance(ss, sheet, sheetName) {
   if (sheet.getLastRow() === 1) {
@@ -119,8 +96,7 @@ function checkAndInsertOpeningBalance(ss, sheet, sheetName) {
       var abbr = sheetName.slice(0, 3);
       var yr = parseInt(sheetName.slice(3), 10) + 2000;
       var mIdx = MONTH_NAMES.indexOf(abbr) + 1;
-      var mStr = (mIdx < 10 ? "0" : "") + mIdx;
-      var openDate = "01-" + mStr + "-" + yr;
+      var openDate = new Date(yr, mIdx - 1, 1);
 
       sheet.appendRow([
         openDate,
@@ -128,13 +104,13 @@ function checkAndInsertOpeningBalance(ss, sheet, sheetName) {
         "Balance brought forward from " + prevSheetName,
         prevBalance > 0 ? prevBalance : "",
         prevBalance < 0 ? Math.abs(prevBalance) : "",
-        '=SUM(D$2:D2)-SUM(E$2:E2)',
+        '=SUM(D${'$'}2:D2)-SUM(E${'$'}2:E2)',
         'opening-' + sheetName,
         new Date().toISOString()
       ]);
 
-      var formatRange = sheet.getRange(2, 4, 1, 3);
-      formatRange.setNumberFormat("$#,##0.00");
+      sheet.getRange(2, 1).setNumberFormat("dd-mm-yyyy");
+      sheet.getRange(2, 4, 1, 3).setNumberFormat("${'$'}#,##0.00");
       sheet.hideColumns(7, 2);
       return true;
     }
@@ -193,7 +169,6 @@ function saveBusinessProfileToSheet1(ss, data) {
   if (!sheet) {
     sheet = ss.insertSheet("Sheet1", 0);
   } else {
-    // Ensure Sheet1 is the first tab
     ss.setActiveSheet(sheet);
     ss.moveActiveSheet(1);
   }
@@ -211,13 +186,16 @@ function saveBusinessProfileToSheet1(ss, data) {
   titleRange.setHorizontalAlignment("center");
   sheet.setRowHeight(1, 36);
 
+  var dt = new Date();
+  var formattedTimestamp = Utilities.formatDate(dt, Session.getScriptTimeZone() || "GMT", "dd-MM-yyyy a HH:mm");
+
   var rows = [
     ["1. Business Name", data.businessName || ""],
     ["2. ABN / ACN", data.abnAcn || ""],
     ["3. Business Address", data.businessAddress || ""],
     ["4. Phone / Mobile", data.phoneMobile || ""],
     ["5. Email Address", data.email || ""],
-    ["Last Updated", Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "GMT", "dd-MM-yyyy hh:mm a")]
+    ["Last Updated", formattedTimestamp]
   ];
 
   var dataRange = sheet.getRange(2, 1, rows.length, 2);
@@ -229,6 +207,7 @@ function saveBusinessProfileToSheet1(ss, data) {
   labelRange.setFontWeight("bold");
   labelRange.setBackground("#F3F4F6");
 
+  sheet.getRange(7, 2).setNumberFormat("@"); // Store timestamp as plain text
   sheet.setColumnWidth(1, 180);
   sheet.setColumnWidth(2, 400);
 
@@ -237,6 +216,145 @@ function saveBusinessProfileToSheet1(ss, data) {
     message: "Business Profile saved to Sheet1 successfully",
     businessName: data.businessName || ""
   };
+}
+
+/**
+ * Retrieves or initializes the "Products" sheet for POS item suggestions.
+ */
+function getOrCreateProductsSheet(ss) {
+  var sheet = ss.getSheetByName("Products");
+  if (!sheet) {
+    // Check case-insensitive
+    var sheets = ss.getSheets();
+    for (var i = 0; i < sheets.length; i++) {
+      if (sheets[i].getName().toLowerCase() === "products") {
+        return sheets[i];
+      }
+    }
+
+    // Create new Products sheet
+    sheet = ss.insertSheet("Products");
+    sheet.appendRow(["Product / Item Name", "Price", "Category", "Last Updated"]);
+
+    // Header styling
+    var headerRange = sheet.getRange(1, 1, 1, 4);
+    headerRange.setBackground("#1E3A8A"); // Deep Blue
+    headerRange.setFontColor("#FFFFFF");
+    headerRange.setFontWeight("bold");
+    sheet.setFrozenRows(1);
+
+    var timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "GMT", "dd-MM-yyyy a HH:mm");
+    // Pre-populate with standard sample POS items
+    var sampleProducts = [
+      ["Espresso / Coffee", 4.50, "Beverage", timestamp],
+      ["Breakfast Combo", 12.50, "Food", timestamp],
+      ["Lunch Special", 18.00, "Food", timestamp],
+      ["Retail Goods", 25.00, "Goods", timestamp],
+      ["Service / Labor (1 hr)", 60.00, "Service", timestamp],
+      ["Wholesale Pack", 150.00, "Wholesale", timestamp]
+    ];
+
+    for (var p = 0; p < sampleProducts.length; p++) {
+      sheet.appendRow(sampleProducts[p]);
+    }
+
+    // Format Price column as Currency (${'$'}#,##0.00)
+    sheet.getRange(2, 2, sampleProducts.length, 1).setNumberFormat("${'$'}#,##0.00");
+    sheet.autoResizeColumns(1, 4);
+  }
+  return sheet;
+}
+
+/**
+ * Reads all products from "Products" sheet.
+ */
+function getProductsFromSpreadsheet(ss) {
+  var sheet = getOrCreateProductsSheet(ss);
+  var rows = sheet.getDataRange().getValues();
+  var products = [];
+
+  if (rows.length <= 1) return products;
+
+  var header = rows[0];
+  var nameIdx = 0;
+  var priceIdx = 1;
+  var catIdx = 2;
+
+  for (var h = 0; h < header.length; h++) {
+    var title = String(header[h]).toLowerCase();
+    if (title.indexOf("name") !== -1 || title.indexOf("product") !== -1 || title.indexOf("item") !== -1) {
+      nameIdx = h;
+    } else if (title.indexOf("price") !== -1 || title.indexOf("amount") !== -1 || title.indexOf("rate") !== -1 || title.indexOf("cost") !== -1) {
+      priceIdx = h;
+    } else if (title.indexOf("category") !== -1 || title.indexOf("group") !== -1 || title.indexOf("type") !== -1) {
+      catIdx = h;
+    }
+  }
+
+  for (var r = 1; r < rows.length; r++) {
+    var row = rows[r];
+    if (!row || row.length === 0) continue;
+
+    var rawName = String(row[nameIdx] || "").trim();
+    if (!rawName) continue;
+
+    var rawPrice = row[priceIdx];
+    var numPrice = 0.0;
+    if (typeof rawPrice === "number") {
+      numPrice = rawPrice;
+    } else if (rawPrice) {
+      var cleaned = String(rawPrice).replace(/[^0-9.-]+/g, "");
+      numPrice = parseFloat(cleaned) || 0.0;
+    }
+
+    var cat = catIdx < row.length ? String(row[catIdx] || "").trim() : "";
+
+    products.push({
+      name: rawName,
+      price: numPrice,
+      category: cat
+    });
+  }
+
+  return products;
+}
+
+/**
+ * Adds or updates a product in the "Products" sheet.
+ */
+function addOrUpdateProductInSpreadsheet(ss, data) {
+  var sheet = getOrCreateProductsSheet(ss);
+  var name = String(data.name || "").trim();
+  if (!name) {
+    return { status: "error", message: "Product name is required" };
+  }
+
+  var price = parseFloat(data.price) || 0.0;
+  var category = String(data.category || "").trim();
+  var timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd-MM-yyyy a hh:mm");
+
+  var rows = sheet.getDataRange().getValues();
+  var foundRow = -1;
+
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).toLowerCase().trim() === name.toLowerCase()) {
+      foundRow = i + 1;
+      break;
+    }
+  }
+
+  if (foundRow > 0) {
+    sheet.getRange(foundRow, 2).setValue(price);
+    if (category) sheet.getRange(foundRow, 3).setValue(category);
+    sheet.getRange(foundRow, 4).setValue(timestamp);
+    sheet.getRange(foundRow, 2).setNumberFormat("${'$'}#,##0.00");
+    return { status: "success", message: "Updated product " + name };
+  } else {
+    sheet.appendRow([name, price, category, timestamp]);
+    var newRow = sheet.getLastRow();
+    sheet.getRange(newRow, 2).setNumberFormat("${'$'}#,##0.00");
+    return { status: "success", message: "Added product " + name };
+  }
 }
 
 /**
@@ -266,7 +384,7 @@ function updateTransactionInSpreadsheet(ss, data) {
     if (lastRow >= 2) {
       var values = targetSheet.getRange(2, 1, lastRow - 1, 8).getValues();
       for (var i = 0; i < values.length; i++) {
-        var rowId = String(values[i][6] || ""); // Column G (ID)
+        var rowId = String(values[i][6] || "");
         var rowDate = values[i][0] instanceof Date ? Utilities.formatDate(values[i][0], Session.getScriptTimeZone(), "yyyy-MM-dd") : String(values[i][0]);
         var rowType = String(values[i][1] || "");
         
@@ -283,12 +401,12 @@ function updateTransactionInSpreadsheet(ss, data) {
     }
   }
 
-  // 2. If not found in targetSheet, search across all monthly sheets
+  // 2. Search across all monthly sheets if not found yet
   if (foundRow === -1) {
     var allSheets = ss.getSheets();
     for (var s = 0; s < allSheets.length; s++) {
       var curSheet = allSheets[s];
-      if (curSheet.getName() === "Sheet1") continue;
+      if (curSheet.getName() === "Sheet1" || curSheet.getName() === "Products") continue;
       var curLastRow = curSheet.getLastRow();
       if (curLastRow < 2) continue;
       var curValues = curSheet.getRange(2, 1, curLastRow - 1, 8).getValues();
@@ -326,130 +444,112 @@ function updateTransactionInSpreadsheet(ss, data) {
       sheetToUpdate.getRange(foundRow, 5).setValue(newAmount);
     }
 
-    if (notes !== undefined && notes !== null && notes !== "") {
+    if (notes !== undefined && notes !== null) {
       sheetToUpdate.getRange(foundRow, 3).setValue(notes);
     }
-    if (type) {
-      sheetToUpdate.getRange(foundRow, 2).setValue(type);
-    }
 
-    // Recalculate balance formula for all rows in this sheet to ensure consistency
-    var lastRowInSheet = sheetToUpdate.getLastRow();
-    if (lastRowInSheet > 1) {
-      sheetToUpdate.getRange(2, 6, lastRowInSheet - 1, 1).setFormulaR1C1("=SUM(R2C4:RC4)-SUM(R2C5:RC5)");
-      sheetToUpdate.getRange(2, 4, lastRowInSheet - 1, 3).setNumberFormat("$#,##0.00");
+    // Refresh balance formulas and sort
+    var finalLastRow = sheetToUpdate.getLastRow();
+    if (finalLastRow > 1) {
+      sheetToUpdate.getRange(2, 1, finalLastRow - 1, 1).setNumberFormat("dd-mm-yyyy");
+      sheetToUpdate.getRange(2, 6, finalLastRow - 1, 1).setFormulaR1C1("=SUM(R2C4:RC4)-SUM(R2C5:RC5)");
+      sheetToUpdate.getRange(2, 4, finalLastRow - 1, 3).setNumberFormat("${'$'}#,##0.00");
     }
 
     return {
       status: "success",
-      message: "Transaction updated and balance recalculated in " + sheetToUpdate.getName(),
-      sheet: sheetToUpdate.getName(),
-      row: foundRow,
-      newAmount: newAmount
+      message: "Transaction amount updated to " + newAmount,
+      updatedRow: foundRow,
+      sheet: sheetToUpdate.getName()
     };
   } else {
-    // Append as a new transaction if not found
-    var fallbackDate = date || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
-    var sName = getMonthSheetName(fallbackDate);
-    var sh = getOrCreateMonthlySheet(ss, sName);
-    checkAndInsertOpeningBalance(ss, sh, sName);
-    var nextRow = sh.getLastRow() + 1;
+    // If not found, insert as a new transaction in the proper month
+    var appendTarget = targetSheet || getOrCreateMonthlySheet(ss, targetSheetName || getMonthSheetName(new Date()));
+    var parsedD = parseInputDate(date);
+    
     var isInc = (type === "Daily Income" || type === "Opening Balance");
-    var incVal = isInc ? newAmount : "";
-    var expVal = !isInc ? newAmount : "";
-    var balForm = '=SUM(D${'$'}2:D' + nextRow + ')-SUM(E${'$'}2:E' + nextRow + ')';
-
-    sh.appendRow([
-      fallbackDate,
+    appendTarget.appendRow([
+      parsedD,
       type || "Daily Income",
       notes || "",
-      incVal,
-      expVal,
-      balForm,
+      isInc ? newAmount : "",
+      !isInc ? newAmount : "",
+      "",
       id || Utilities.getUuid(),
       new Date().toISOString()
     ]);
-    sh.getRange(nextRow, 4, 1, 3).setNumberFormat("${'$'}#,##0.00");
-    sh.hideColumns(7, 2);
+
+    var aLastRow = appendTarget.getLastRow();
+    if (aLastRow > 1) {
+      appendTarget.getRange(2, 1, aLastRow - 1, 1).setNumberFormat("dd-mm-yyyy");
+      if (aLastRow > 2) {
+        appendTarget.getRange(2, 1, aLastRow - 1, appendTarget.getLastColumn()).sort([{column: 1, ascending: true}]);
+      }
+      appendTarget.getRange(2, 6, aLastRow - 1, 1).setFormulaR1C1("=SUM(R2C4:RC4)-SUM(R2C5:RC5)");
+      appendTarget.getRange(2, 4, aLastRow - 1, 3).setNumberFormat("${'$'}#,##0.00");
+    }
 
     return {
       status: "success",
-      message: "Transaction added with updated amount to " + sName,
-      sheet: sName,
-      newAmount: newAmount
+      message: "Inserted as new transaction and balance recalculated",
+      sheet: appendTarget.getName()
     };
   }
 }
 
 /**
- * Deletes an existing transaction from monthly sheets by ID or Date+Type.
+ * Robust date parser supporting YYYY-MM-DD and DD-MM-YYYY.
+ */
+function parseInputDate(rawDateStr) {
+  if (!rawDateStr) return new Date();
+  var dateParts = String(rawDateStr).trim().split("-");
+  if (dateParts.length === 3) {
+    if (dateParts[0].length === 4) {
+      // YYYY-MM-DD
+      return new Date(parseInt(dateParts[0], 10), parseInt(dateParts[1], 10) - 1, parseInt(dateParts[2], 10));
+    } else {
+      // DD-MM-YYYY
+      return new Date(parseInt(dateParts[2], 10), parseInt(dateParts[1], 10) - 1, parseInt(dateParts[0], 10));
+    }
+  }
+  return new Date();
+}
+
+/**
+ * Deletes a transaction from the spreadsheet and recalculates running balance formulas.
  */
 function deleteTransactionFromSpreadsheet(ss, data) {
   var id = data.id ? String(data.id) : "";
   var date = data.date ? String(data.date) : "";
   var type = data.type ? String(data.type) : "";
 
-  var targetSheet = null;
-  var targetSheetName = "";
-
-  if (date) {
-    targetSheetName = getMonthSheetName(date);
-    targetSheet = ss.getSheetByName(targetSheetName);
-  }
-
+  var sheets = ss.getSheets();
   var foundRow = -1;
   var sheetToModify = null;
 
-  // 1. Search in target sheet
-  if (targetSheet) {
-    var lastRow = targetSheet.getLastRow();
-    if (lastRow >= 2) {
-      var values = targetSheet.getRange(2, 1, lastRow - 1, 8).getValues();
-      for (var i = 0; i < values.length; i++) {
-        var rowId = String(values[i][6] || ""); // Column G (ID)
-        var rowDate = values[i][0] instanceof Date ? Utilities.formatDate(values[i][0], Session.getScriptTimeZone(), "yyyy-MM-dd") : String(values[i][0]);
-        var rowType = String(values[i][1] || "");
+  for (var s = 0; s < sheets.length; s++) {
+    var curSheet = sheets[s];
+    if (curSheet.getName() === "Sheet1" || curSheet.getName() === "Products") continue;
+    var lastRow = curSheet.getLastRow();
+    if (lastRow < 2) continue;
 
-        if (id && rowId && (rowId === id || id.indexOf(rowId) !== -1 || rowId.indexOf(id) !== -1)) {
-          foundRow = i + 2;
-          sheetToModify = targetSheet;
-          break;
-        } else if (!id && date && type && rowDate === date && rowType === type) {
-          foundRow = i + 2;
-          sheetToModify = targetSheet;
-          break;
-        }
+    var rows = curSheet.getRange(2, 1, lastRow - 1, 8).getValues();
+    for (var j = 0; j < rows.length; j++) {
+      var rId = String(rows[j][6] || "");
+      var rDate = rows[j][0] instanceof Date ? Utilities.formatDate(rows[j][0], Session.getScriptTimeZone(), "yyyy-MM-dd") : String(rows[j][0]);
+      var rType = String(rows[j][1] || "");
+
+      if (id && rId && (rId === id || id.indexOf(rId) !== -1 || rId.indexOf(id) !== -1)) {
+        foundRow = j + 2;
+        sheetToModify = curSheet;
+        break;
+      } else if (!id && date && type && rDate === date && rType === type) {
+        foundRow = j + 2;
+        sheetToModify = curSheet;
+        break;
       }
     }
-  }
-
-  // 2. Search across all sheets if not found
-  if (foundRow === -1) {
-    var allSheets = ss.getSheets();
-    for (var s = 0; s < allSheets.length; s++) {
-      var curSheet = allSheets[s];
-      if (curSheet.getName() === "Sheet1") continue;
-      var curLastRow = curSheet.getLastRow();
-      if (curLastRow < 2) continue;
-
-      var vals = curSheet.getRange(2, 1, curLastRow - 1, 8).getValues();
-      for (var j = 0; j < vals.length; j++) {
-        var rId = String(vals[j][6] || "");
-        var rDate = vals[j][0] instanceof Date ? Utilities.formatDate(vals[j][0], Session.getScriptTimeZone(), "yyyy-MM-dd") : String(vals[j][0]);
-        var rType = String(vals[j][1] || "");
-
-        if (id && rId && (rId === id || id.indexOf(rId) !== -1 || rId.indexOf(id) !== -1)) {
-          foundRow = j + 2;
-          sheetToModify = curSheet;
-          break;
-        } else if (!id && date && type && rDate === date && rType === type) {
-          foundRow = j + 2;
-          sheetToModify = curSheet;
-          break;
-        }
-      }
-      if (foundRow !== -1) break;
-    }
+    if (foundRow !== -1) break;
   }
 
   if (foundRow !== -1 && sheetToModify) {
@@ -458,6 +558,7 @@ function deleteTransactionFromSpreadsheet(ss, data) {
     // Refresh balance formulas for ALL rows in this sheet to ensure consistency
     var newLastRow = sheetToModify.getLastRow();
     if (newLastRow > 1) {
+      sheetToModify.getRange(2, 1, newLastRow - 1, 1).setNumberFormat("dd-mm-yyyy");
       sheetToModify.getRange(2, 6, newLastRow - 1, 1).setFormulaR1C1("=SUM(R2C4:RC4)-SUM(R2C5:RC5)");
       sheetToModify.getRange(2, 4, newLastRow - 1, 3).setNumberFormat("${'$'}#,##0.00");
     }
@@ -497,6 +598,12 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify(profileResult)).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // Check if this is a request to save a Product item
+    if (data.action === "save_product" || data.action === "add_product") {
+      var prodResult = addOrUpdateProductInSpreadsheet(ss, data);
+      return ContentService.createTextOutput(JSON.stringify(prodResult)).setMimeType(ContentService.MimeType.JSON);
+    }
+
     // Check if this is a request to update an existing transaction amount
     if (data.action === "update_transaction" || data.action === "edit_transaction") {
       var updateResult = updateTransactionInSpreadsheet(ss, data);
@@ -509,20 +616,9 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify(deleteResult)).setMimeType(ContentService.MimeType.JSON);
     }
 
+    var id = data.id || Utilities.getUuid();
     var rawDateStr = data.date || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
-    var dateParts = rawDateStr.trim().split("-");
-    var sheetDate;
-    if (dateParts.length === 3 && dateParts[0].length === 4) {
-      // Parse YYYY-MM-DD
-      sheetDate = new Date(parseInt(dateParts[0], 10), parseInt(dateParts[1], 10) - 1, parseInt(dateParts[2], 10));
-    } else if (dateParts.length === 3) {
-      // Parse DD-MM-YYYY
-      sheetDate = new Date(parseInt(dateParts[2], 10), parseInt(dateParts[1], 10) - 1, parseInt(dateParts[0], 10));
-    } else {
-      sheetDate = new Date();
-    }
-    
-    var date = sheetDate;
+    var date = parseInputDate(rawDateStr);
     var type = data.type || "Daily Income";
     var notes = data.notes || data.category || "";
     var amount = parseFloat(data.amount) || 0.0;
@@ -554,7 +650,9 @@ function doPost(e) {
     var lastRow = sheet.getLastRow();
     
     // Format Date column (A)
-    sheet.getRange(2, 1, lastRow - 1, 1).setNumberFormat("dd-mm-yyyy");
+    if (lastRow > 1) {
+      sheet.getRange(2, 1, lastRow - 1, 1).setNumberFormat("dd-mm-yyyy");
+    }
     
     // Sort by Date (Column A) ascending
     if (lastRow > 2) {
@@ -567,18 +665,15 @@ function doPost(e) {
       var balanceRange = sheet.getRange(2, 6, dataRows, 1);
       balanceRange.setFormulaR1C1("=SUM(R2C4:RC4)-SUM(R2C5:RC5)");
       
-      // Format Income, Expense & Bills, and Balance as Currency ($#,##0.00)
-      sheet.getRange(2, 4, dataRows, 3).setNumberFormat("$#,##0.00");
+      // Format Income, Expense & Bills, and Balance as Currency (${'$'}#,##0.00)
+      sheet.getRange(2, 4, dataRows, 3).setNumberFormat("${'$'}#,##0.00");
     }
-
-    // Re-verify hidden columns
-    sheet.hideColumns(7, 2);
 
     return ContentService.createTextOutput(JSON.stringify({
       status: "success",
-      message: "Transaction saved and sorted in " + sheetName,
-      sheet: sheetName,
-      id: id
+      message: "Transaction added, sorted, and balance recalculated in " + sheetName,
+      monthSheet: sheetName,
+      row: lastRow
     })).setMimeType(ContentService.MimeType.JSON);
 
   } catch (error) {
@@ -591,17 +686,29 @@ function doPost(e) {
 
 /**
  * Handles GET requests:
- * 1. action=pdf: Returns complete spreadsheet PDF export URL.
- * 2. Default: Retrieves transactions across monthly sheets.
+ * 1. action=get_products: Returns list of products with name and price from "Products" sheet.
+ * 2. action=pdf: Returns complete spreadsheet PDF export URL.
+ * 3. action=get_profile: Returns Business Profile from Sheet1.
+ * 4. Default: Retrieves transactions across monthly sheets.
  */
 function doGet(e) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
 
+    // Check for Products retrieval request (POS Point of Sale)
+    if (e && e.parameter && (e.parameter.action === "get_products" || e.parameter.action === "products")) {
+      var productList = getProductsFromSpreadsheet(ss);
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        count: productList.length,
+        products: productList
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     // Check for PDF export request
     if (e && e.parameter && (e.parameter.action === "pdf" || e.parameter.format === "pdf")) {
       var ssUrl = ss.getUrl();
-      var exportUrl = ssUrl.replace(/\/edit.*$/, '') + '/export?format=pdf&size=letter&portrait=true&fitw=true&gridlines=true';
+      var exportUrl = ssUrl.replace(/\/edit.*${'$'}/, '') + '/export?format=pdf&size=letter&portrait=true&fitw=true&gridlines=true';
       return ContentService.createTextOutput(JSON.stringify({
         status: "success",
         pdfUrl: exportUrl,
@@ -638,7 +745,11 @@ function doGet(e) {
       var sheet = sheets[s];
       var name = sheet.getName();
 
-      // Check if sheet name matches month format (e.g., Sep26, Oct26) or legacy 'Transactions'
+      // Skip non-transaction sheets
+      if (name === "Sheet1" || name === "Products") {
+        continue;
+      }
+
       var isMonthSheet = /^[A-Z][a-z]{2}\d{2}${'$'}/.test(name);
       var isLegacySheet = (name === "Transactions");
 
@@ -672,7 +783,6 @@ function doGet(e) {
             var dateStr = String(rawDate);
             var parts = dateStr.trim().split("-");
             if (parts.length === 3 && parts[0].length !== 4) {
-              // Convert DD-MM-YYYY to YYYY-MM-DD for the app
               formattedDate = parts[2] + "-" + parts[1] + "-" + parts[0];
             } else {
               formattedDate = dateStr;
@@ -740,6 +850,7 @@ function doGet(e) {
     return ContentService.createTextOutput(JSON.stringify({
       status: "success",
       count: result.length,
+      products_endpoint: "?action=get_products",
       data: result
     })).setMimeType(ContentService.MimeType.JSON);
 

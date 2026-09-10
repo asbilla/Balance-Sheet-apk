@@ -163,7 +163,7 @@ object PdfExportHelper {
 
             // Loop through dates
             // Sort summaries chronologically for ledger display
-            val sortedAsc = summaries.sortedBy { it.date }
+            val sortedAsc = summaries.sortedBy { toCanonicalDate(it.date) }
 
             for (dateSum in sortedAsc) {
                 // Check if page overflow
@@ -180,13 +180,7 @@ object PdfExportHelper {
 
                 // Date separator bar
                 canvas.drawRect(30f, y - 4f, (pageWidth - 30).toFloat(), y + 16f, Paint().apply { color = Color.rgb(243, 244, 246) })
-                val displayDateSum = try {
-                    val parser = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                    val formatter = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
-                    parser.parse(dateSum.date)?.let { formatter.format(it) } ?: dateSum.date
-                } catch (_: Exception) {
-                    dateSum.date
-                }
+                val displayDateSum = formatDateForDisplay(dateSum.date)
                 val dateTitle = "$displayDateSum   (Day Net: $${String.format(Locale.US, "%,.2f", dateSum.netBalance)} | Cumulative: $${String.format(Locale.US, "%,.2f", dateSum.cumulativeBalance)})"
                 canvas.drawText(dateTitle, 35f, y + 10f, boldTextPaint)
                 y += 22f
@@ -203,13 +197,7 @@ object PdfExportHelper {
                         y += 26f
                     }
 
-                    val displayTxDate = try {
-                        val parser = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                        val formatter = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
-                        parser.parse(tx.date)?.let { formatter.format(it) } ?: tx.date
-                    } catch (_: Exception) {
-                        tx.date
-                    }
+                    val displayTxDate = formatDateForDisplay(tx.date)
                     canvas.drawText(displayTxDate, 35f, y, textPaint)
                     canvas.drawText(tx.type, 100f, y, textPaint)
 
@@ -287,6 +275,42 @@ object PdfExportHelper {
             context.startActivity(intent)
         } catch (e: Exception) {
             Toast.makeText(context, "Unable to open download URL: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun toCanonicalDate(dateStr: String): String {
+        val trimmed = dateStr.trim()
+        val parts = trimmed.split("-")
+        if (parts.size == 3) {
+            return if (parts[0].length == 4) {
+                trimmed
+            } else {
+                "${parts[2]}-${parts[1]}-${parts[0]}"
+            }
+        }
+        return trimmed
+    }
+
+    fun formatDateForDisplay(dateStr: String): String {
+        return try {
+            val trimmed = dateStr.trim()
+            val parts = trimmed.split("-")
+            val date = if (parts.size == 3) {
+                if (parts[0].length == 4) {
+                    SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(trimmed)
+                } else {
+                    SimpleDateFormat("dd-MM-yyyy", Locale.US).parse(trimmed)
+                }
+            } else {
+                null
+            }
+            if (date != null) {
+                SimpleDateFormat("EEE, dd MMM yyyy", Locale.US).format(date)
+            } else {
+                dateStr
+            }
+        } catch (e: Exception) {
+            dateStr
         }
     }
 }

@@ -179,7 +179,7 @@ fun BalanceSheetScreen(
                 combined.add(
                     DisplayTransaction(
                         id = local.uuid,
-                        date = local.date,
+                        date = normalizeDateIso(local.date),
                         type = local.type,
                         category = local.category,
                         amount = local.amount,
@@ -194,7 +194,7 @@ fun BalanceSheetScreen(
                     combined.add(
                         DisplayTransaction(
                             id = remote.id.ifEmpty { "remote-${remote.date}-${remote.amount}" },
-                            date = remote.date,
+                            date = normalizeDateIso(remote.date),
                             type = remote.type,
                             category = remote.notes,
                             amount = remote.amount,
@@ -712,8 +712,18 @@ fun DateBalanceCard(
 
     val formattedDateHeader = remember(summary.date) {
         try {
-            val parser = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val dateObj = parser.parse(summary.date)
+            val parts = summary.date.trim().split("-")
+            val dateObj = if (parts.size == 3) {
+                val cal = java.util.Calendar.getInstance()
+                if (parts[0].length == 4) {
+                    cal.set(parts[0].toInt(), parts[1].toInt() - 1, parts[2].toInt())
+                } else {
+                    cal.set(parts[2].toInt(), parts[1].toInt() - 1, parts[0].toInt())
+                }
+                cal.time
+            } else {
+                SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(summary.date)
+            }
             if (dateObj != null) {
                 SimpleDateFormat("EEE, dd MMM yyyy", Locale.getDefault()).format(dateObj)
             } else {
@@ -1248,4 +1258,17 @@ fun EditAmountDialog(
             }
         }
     )
+}
+
+private fun normalizeDateIso(raw: String): String {
+    val trimmed = raw.trim()
+    val parts = trimmed.split("-")
+    if (parts.size == 3) {
+        return if (parts[0].length == 4) {
+            trimmed
+        } else {
+            "${parts[2]}-${parts[1]}-${parts[0]}"
+        }
+    }
+    return trimmed
 }
