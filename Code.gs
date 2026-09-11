@@ -230,48 +230,47 @@ function getOrCreateProductsSheet(ss) {
 
     // Create new Products sheet
     sheet = ss.insertSheet("Products");
-    sheet.appendRow(["Product / Item Name", "Price", "Category", "Last Updated"]);
+    sheet.appendRow(["Product / Item Name", "Price", "Category"]);
 
     // Header styling
-    var headerRange = sheet.getRange(1, 1, 1, 4);
+    var headerRange = sheet.getRange(1, 1, 1, 3);
     headerRange.setBackground("#1E3A8A"); // Deep Blue
     headerRange.setFontColor("#FFFFFF");
     headerRange.setFontWeight("bold");
     sheet.setFrozenRows(1);
 
-    var timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "GMT", "dd-MM-yyyy a HH:mm");
     // Pre-populate with standard sample POS items
     var sampleProducts = [
-     	["Eyebrows", 10.00, "Threading", timestamp],
-	["Uper Lips", 5.00, "Threading", timestamp],
-	["Chin", 5.00, "Threading", timestamp],
-	["Forehead", 5.00, "Threading", timestamp],
-	["Sideburns", 12.00, "Threading", timestamp],
-	["Neck", 5.00, "Threading", timestamp],
-	["Full Face", 35.00, "Threading", timestamp],
-	["Underarms", 15.00, "Body Waxing", timestamp],
-	["Full Arms", 30.00, "Body Waxing", timestamp],
-	["1/2 Arms", 20.00, "Body Waxing", timestamp],
-	["3/4 Arms", 25.00, "Body Waxing", timestamp],
-	["Full Legs", 45.00, "Body Waxing", timestamp],
-	["1/2 Legs w Knee", 25.00, "Body Waxing", timestamp],
-	["1/2 Legs Below Knee", 20.00, "Body Waxing", timestamp],
-	["Back", 25.00, "Body Waxing", timestamp],
-	["1/2 Back", 20.00, "Body Waxing", timestamp],
-	["Stomach", 20.00, "Body Waxing", timestamp],
-	["Back of Nick", 15.00, "Body Waxing", timestamp],
-	["Sideburns", 15.00, "Facial Waxing", timestamp],
-	["Chun", 7.00, "Facial Waxing", timestamp],
-	["Upper Lips", 7.00, "Facial Waxing", timestamp],
-	["Neck", 7.00, "Facial Waxing", timestamp],
-	["Eyebrow", 12.00, "Tinting", timestamp],
-	["Eyelash", 20.00, "Tinting", timestamp],
-	["EBT+ELT", 30.00, "Tinting", timestamp],
-	["Henna (Herbal Henna + Oil)", 30.00, "Tinting", timestamp],
-	["Henna (Herbal Henna + Oil)", 25.00, "Tinting", timestamp],
-	["20min Clean Up (Cleanse, Scrub, Face Pack)", 20.00, "Herbal Facial (BYO)", timestamp],
-	["Hair Oil Massage (10 min)", 15.00, "Hair Care (BYO)", timestamp],
-	["Hand Henna -Starting From $10", 10.00, "Hair Care (BYO)", timestamp]
+      ["Eyebrows", 10.00, "Threading"],
+      ["Uper Lips", 5.00, "Threading"],
+      ["Chin", 5.00, "Threading"],
+      ["Forehead", 5.00, "Threading"],
+      ["Sideburns", 12.00, "Threading"],
+      ["Neck", 5.00, "Threading"],
+      ["Full Face", 35.00, "Threading"],
+      ["Underarms", 15.00, "Body Waxing"],
+      ["Full Arms", 30.00, "Body Waxing"],
+      ["1/2 Arms", 20.00, "Body Waxing"],
+      ["3/4 Arms", 25.00, "Body Waxing"],
+      ["Full Legs", 45.00, "Body Waxing"],
+      ["1/2 Legs w Knee", 25.00, "Body Waxing"],
+      ["1/2 Legs Below Knee", 20.00, "Body Waxing"],
+      ["Back", 25.00, "Body Waxing"],
+      ["1/2 Back", 20.00, "Body Waxing"],
+      ["Stomach", 20.00, "Body Waxing"],
+      ["Back of Nick", 15.00, "Body Waxing"],
+      ["Sideburns", 15.00, "Facial Waxing"],
+      ["Chun", 7.00, "Facial Waxing"],
+      ["Upper Lips", 7.00, "Facial Waxing"],
+      ["Neck", 7.00, "Facial Waxing"],
+      ["Eyebrow", 12.00, "Tinting"],
+      ["Eyelash", 20.00, "Tinting"],
+      ["EBT+ELT", 30.00, "Tinting"],
+      ["Henna (Herbal Henna + Oil)", 30.00, "Tinting"],
+      ["Henna (Herbal Henna + Oil)", 25.00, "Tinting"],
+      ["20min Clean Up (Cleanse, Scrub, Face Pack)", 20.00, "Herbal Facial (BYO)"],
+      ["Hair Oil Massage (10 min)", 15.00, "Hair Care (BYO)"],
+      ["Hand Henna -Starting From $10", 10.00, "Hair Care (BYO)"]
     ];
 
     for (var p = 0; p < sampleProducts.length; p++) {
@@ -280,7 +279,7 @@ function getOrCreateProductsSheet(ss) {
 
     // Format Price column as Currency ($#,##0.00)
     sheet.getRange(2, 2, sampleProducts.length, 1).setNumberFormat("$#,##0.00");
-    sheet.autoResizeColumns(1, 4);
+    sheet.autoResizeColumns(1, 3);
   }
   return sheet;
 }
@@ -351,7 +350,6 @@ function addOrUpdateProductInSpreadsheet(ss, data) {
 
   var price = parseFloat(data.price) || 0.0;
   var category = String(data.category || "").trim();
-  var timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd-MM-yyyy a hh:mm");
 
   var rows = sheet.getDataRange().getValues();
   var foundRow = -1;
@@ -366,11 +364,10 @@ function addOrUpdateProductInSpreadsheet(ss, data) {
   if (foundRow > 0) {
     sheet.getRange(foundRow, 2).setValue(price);
     if (category) sheet.getRange(foundRow, 3).setValue(category);
-    sheet.getRange(foundRow, 4).setValue(timestamp);
     sheet.getRange(foundRow, 2).setNumberFormat("$#,##0.00");
     return { status: "success", message: "Updated product " + name };
   } else {
-    sheet.appendRow([name, price, category, timestamp]);
+    sheet.appendRow([name, price, category]);
     var newRow = sheet.getLastRow();
     sheet.getRange(newRow, 2).setNumberFormat("$#,##0.00");
     return { status: "success", message: "Added product " + name };

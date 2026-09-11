@@ -4,6 +4,8 @@
 
 # Run and deploy your AI Studio app
 
+> 📖 **User Guide**: For complete step-by-step documentation on all features, functions, setup steps, POS sales, and Google Sheets integration, see **[USER_GUIDE.md](USER_GUIDE.md)**.
+
 This contains everything you need to run your app locally.
 
 View your app in AI Studio: https://ai.studio/apps/7ee4a00b-3e94-4105-bcbb-6c2af117dc01
