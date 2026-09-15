@@ -27,6 +27,10 @@ val BalanceBlue = Color(0xFF2563EB)
 val BalanceBlueContainer = Color(0xFFDBEAFE)
 val BalanceBlueText = Color(0xFF1E3A8A)
 
+val AppointmentPurple = Color(0xFF7C3AED)
+val AppointmentPurpleContainer = Color(0xFFEDE9FE)
+val AppointmentPurpleText = Color(0xFF5B21B6)
+
 val SlateDark = Color(0xFF0F172A)
 val SlateMedium = Color(0xFF475569)
 val SlateLight = Color(0xFFF8FAFC)

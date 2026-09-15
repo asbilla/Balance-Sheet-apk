@@ -19,6 +19,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.data.repository.TransactionRepository
+import com.example.ui.appointments.AppointmentsScreen
 import com.example.ui.balancesheet.BalanceSheetScreen
 import com.example.ui.dashboard.DashboardScreen
 import com.example.ui.entry.EntryScreen
@@ -52,6 +53,7 @@ sealed class Screen(val route: String) {
     data object Setup : Screen("setup")
     data object Dashboard : Screen("dashboard")
     data object BalanceSheet : Screen("balancesheet")
+    data object Appointments : Screen("appointments")
     data object Entry : Screen("entry/{entryType}") {
         fun createRoute(entryType: String): String = "entry/${Uri.encode(entryType)}"
     }
@@ -82,7 +84,10 @@ fun AppNavigation(
                     navController.navigate(Screen.Dashboard.route) {
                         popUpTo(Screen.Setup.route) { inclusive = true }
                     }
-                }
+                },
+                onNavigateBack = if (navController.previousBackStackEntry != null) {
+                    { navController.popBackStack() }
+                } else null
             )
         }
 
@@ -95,6 +100,22 @@ fun AppNavigation(
                 },
                 onNavigateToBalanceSheet = {
                     navController.navigate(Screen.BalanceSheet.route)
+                },
+                onNavigateToAppointments = {
+                    navController.navigate(Screen.Appointments.route)
+                },
+                onNavigateToSettings = {
+                    navController.navigate(Screen.Setup.route)
+                }
+            )
+        }
+
+        // Appointments & Phone Bookings Screen
+        composable(Screen.Appointments.route) {
+            AppointmentsScreen(
+                repository = repository,
+                onNavigateBack = {
+                    navController.popBackStack()
                 },
                 onNavigateToSettings = {
                     navController.navigate(Screen.Setup.route)

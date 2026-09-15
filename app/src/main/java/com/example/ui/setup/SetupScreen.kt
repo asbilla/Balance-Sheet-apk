@@ -21,9 +21,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Business
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
@@ -56,6 +58,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -79,9 +83,14 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.AppointmentSettings
 import com.example.data.pref.BusinessProfile
 import com.example.data.repository.TransactionRepository
+import com.example.ui.theme.AppointmentPurple
+import com.example.ui.theme.AppointmentPurpleContainer
+import com.example.ui.theme.AppointmentPurpleText
 import com.example.ui.theme.BalanceBlue
+import com.example.ui.theme.ExpenseRed
 import com.example.ui.theme.IncomeGreen
 import com.example.util.GoogleAppsScriptSnippet
 import kotlinx.coroutines.launch
@@ -91,6 +100,7 @@ import kotlinx.coroutines.launch
 fun SetupScreen(
     repository: TransactionRepository,
     onConfigured: () -> Unit,
+    onNavigateBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -103,6 +113,14 @@ fun SetupScreen(
     var businessAddress by remember { mutableStateOf(initialProfile.businessAddress) }
     var phoneMobile by remember { mutableStateOf(initialProfile.phoneMobile) }
     var email by remember { mutableStateOf(initialProfile.email) }
+
+    val initialAppointmentSettings = remember { repository.getAppointmentSettings() }
+    var appointmentsEnabled by remember { mutableStateOf(initialAppointmentSettings.bookingEnabled) }
+    var slotDurationMinutes by remember { mutableStateOf(initialAppointmentSettings.slotDurationMinutes) }
+    var startHour by remember { mutableStateOf(initialAppointmentSettings.startHour) }
+    var endHour by remember { mutableStateOf(initialAppointmentSettings.endHour) }
+    var bufferMinutes by remember { mutableStateOf(initialAppointmentSettings.bufferMinutes) }
+    var workingDays by remember { mutableStateOf(initialAppointmentSettings.workingDays) }
 
     var urlInput by remember { mutableStateOf(repository.getWebAppUrl()) }
     var isTesting by remember { mutableStateOf(false) }
@@ -117,10 +135,23 @@ fun SetupScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "Sheet Integration Setup",
+                        text = "Business & System Settings",
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleLarge
                     )
+                },
+                navigationIcon = {
+                    if (onNavigateBack != null) {
+                        IconButton(
+                            onClick = onNavigateBack,
+                            modifier = Modifier.testTag("setup_back_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back"
+                            )
+                        }
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -394,7 +425,367 @@ fun SetupScreen(
                 }
             }
 
-            // 2. GOOGLE SHEETS BACKEND CONNECTION
+            // 2. CALENDAR APPOINTMENTS & TIME SLOT SETTINGS
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.5.dp, AppointmentPurple.copy(alpha = 0.4f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(AppointmentPurple),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CalendarMonth,
+                                contentDescription = "Calendar Appointments",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Calendar Appointments & Time Slots",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 17.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Configure booking ability & client schedule slots",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    // Calendar Appointments Ability Toggle
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Calendar Appointments Ability",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 15.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = if (appointmentsEnabled) "Enabled: Callers can book appointments" else "Disabled: Phone booking paused",
+                                fontSize = 12.sp,
+                                color = if (appointmentsEnabled) IncomeGreen else ExpenseRed
+                            )
+                        }
+                        Switch(
+                            checked = appointmentsEnabled,
+                            onCheckedChange = { appointmentsEnabled = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = AppointmentPurple
+                            ),
+                            modifier = Modifier.testTag("toggle_appointments_enabled")
+                        )
+                    }
+
+                    if (appointmentsEnabled) {
+                        // Time Slot Duration Selection
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "Time Slot Duration:",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                listOf(15, 30, 45, 60).forEach { mins ->
+                                    val isSelected = slotDurationMinutes == mins
+                                    Surface(
+                                        onClick = { slotDurationMinutes = mins },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isSelected) AppointmentPurple else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (isSelected) AppointmentPurple else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                        ),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(42.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "${mins} min",
+                                                fontSize = 13.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Daily Working Hours (Opening & Closing)
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = "Daily Operating Hours:",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                // Opening Time
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Opens At",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        listOf(8, 9, 10).forEach { h ->
+                                            val isSelected = startHour == h
+                                            Surface(
+                                                onClick = { startHour = h },
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = if (isSelected) AppointmentPurple else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(36.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Text(
+                                                        text = "${if (h < 10) "0$h" else "$h"}:00 AM",
+                                                        fontSize = 11.sp,
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Closing Time
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Closes At",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        listOf(17, 18, 19, 20).forEach { h ->
+                                            val isSelected = endHour == h
+                                            val displayH = if (h > 12) h - 12 else h
+                                            Surface(
+                                                onClick = { endHour = h },
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = if (isSelected) AppointmentPurple else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(36.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Text(
+                                                        text = "0${displayH}:00 PM",
+                                                        fontSize = 11.sp,
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Buffer between appointments
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "Rest / Buffer Between Slots:",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                listOf(0 to "None", 5 to "5 min", 10 to "10 min", 15 to "15 min").forEach { (bMins, label) ->
+                                    val isSelected = bufferMinutes == bMins
+                                    Surface(
+                                        onClick = { bufferMinutes = bMins },
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isSelected) AppointmentPurple else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(36.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = label,
+                                                fontSize = 11.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Working Days
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "Working Days (Open for Bookings):",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            val dayNames = listOf(1 to "Mon", 2 to "Tue", 3 to "Wed", 4 to "Thu", 5 to "Fri", 6 to "Sat", 7 to "Sun")
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                dayNames.forEach { (dayIdx, name) ->
+                                    val isWorking = workingDays.contains(dayIdx)
+                                    Surface(
+                                        onClick = {
+                                            workingDays = if (isWorking) {
+                                                if (workingDays.size > 1) workingDays - dayIdx else workingDays
+                                            } else {
+                                                workingDays + dayIdx
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isWorking) AppointmentPurpleContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (isWorking) AppointmentPurple else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                                        ),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(36.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = name,
+                                                fontSize = 11.sp,
+                                                fontWeight = if (isWorking) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isWorking) AppointmentPurpleText else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Live Slot Preview
+                        val previewSettings = remember(appointmentsEnabled, slotDurationMinutes, startHour, endHour, bufferMinutes, workingDays) {
+                            AppointmentSettings(
+                                bookingEnabled = appointmentsEnabled,
+                                slotDurationMinutes = slotDurationMinutes,
+                                startHour = startHour,
+                                startMinute = 0,
+                                endHour = endHour,
+                                endMinute = 0,
+                                bufferMinutes = bufferMinutes,
+                                workingDays = workingDays
+                            )
+                        }
+                        val sampleSlots = remember(previewSettings) {
+                            repository.generateTimeSlots(previewSettings)
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "Generated Schedule: ${sampleSlots.size} slots / day",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = AppointmentPurple
+                                )
+                                Text(
+                                    text = sampleSlots.take(6).joinToString("  •  ") + if (sampleSlots.size > 6) "  •  ..." else "",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    // Save Appointment Settings Button
+                    Button(
+                        onClick = {
+                            val newSettings = AppointmentSettings(
+                                bookingEnabled = appointmentsEnabled,
+                                slotDurationMinutes = slotDurationMinutes,
+                                startHour = startHour,
+                                startMinute = 0,
+                                endHour = endHour,
+                                endMinute = 0,
+                                bufferMinutes = bufferMinutes,
+                                workingDays = workingDays
+                            )
+                            repository.setAppointmentSettings(newSettings)
+                            Toast.makeText(context, "Calendar & Time Slot Settings Saved!", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = AppointmentPurple),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("save_appointment_settings_button")
+                    ) {
+                        Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Save Appointment Settings",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+            }
+
+            // 3. GOOGLE SHEETS BACKEND CONNECTION
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
@@ -611,6 +1002,17 @@ fun SetupScreen(
                         email = email.trim()
                     )
                     repository.setWebAppUrl(trimmed)
+                    val newSettings = AppointmentSettings(
+                        bookingEnabled = appointmentsEnabled,
+                        slotDurationMinutes = slotDurationMinutes,
+                        startHour = startHour,
+                        startMinute = 0,
+                        endHour = endHour,
+                        endMinute = 0,
+                        bufferMinutes = bufferMinutes,
+                        workingDays = workingDays
+                    )
+                    repository.setAppointmentSettings(newSettings)
                     scope.launch {
                         repository.saveBusinessProfile(profile, syncToSheets = trimmed.startsWith("https://script.google.com/"))
                     }
@@ -621,7 +1023,7 @@ fun SetupScreen(
                     .fillMaxWidth()
                     .height(52.dp)
                     .testTag("save_and_continue_button"),
-                enabled = urlInput.trim().startsWith("https://script.google.com/"),
+                enabled = urlInput.trim().isNotEmpty(),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = BalanceBlue)
             ) {
@@ -650,6 +1052,17 @@ fun SetupScreen(
                             phoneMobile = phoneMobile.trim(),
                             email = email.trim()
                         )
+                        val newSettings = AppointmentSettings(
+                            bookingEnabled = appointmentsEnabled,
+                            slotDurationMinutes = slotDurationMinutes,
+                            startHour = startHour,
+                            startMinute = 0,
+                            endHour = endHour,
+                            endMinute = 0,
+                            bufferMinutes = bufferMinutes,
+                            workingDays = workingDays
+                        )
+                        repository.setAppointmentSettings(newSettings)
                         // User can continue with offline local database
                         repository.setWebAppUrl("https://script.google.com/macros/s/offline-demo/exec")
                         scope.launch {

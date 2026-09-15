@@ -1,6 +1,7 @@
 package com.example.ui.dashboard
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.CloudSync
@@ -31,12 +33,14 @@ import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -54,6 +58,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.repository.TransactionRepository
+import com.example.ui.theme.AppointmentPurple
+import com.example.ui.theme.AppointmentPurpleContainer
+import com.example.ui.theme.AppointmentPurpleText
 import com.example.ui.theme.BalanceBlue
 import com.example.ui.theme.BalanceBlueContainer
 import com.example.ui.theme.BalanceBlueText
@@ -76,6 +83,7 @@ fun DashboardScreen(
     repository: TransactionRepository,
     onNavigateToEntry: (entryType: String) -> Unit,
     onNavigateToBalanceSheet: () -> Unit,
+    onNavigateToAppointments: () -> Unit,
     onNavigateToSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -83,12 +91,17 @@ fun DashboardScreen(
     val transactions by repository.allTransactions.collectAsStateWithLifecycle(initialValue = emptyList())
     val unsyncedCount by repository.unsyncedCount.collectAsStateWithLifecycle(initialValue = 0)
     val businessProfile by repository.businessProfile.collectAsStateWithLifecycle(initialValue = repository.getBusinessProfile())
+    val allAppointments by repository.allAppointments.collectAsStateWithLifecycle(initialValue = emptyList())
 
     val todayIso = remember {
         SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
     }
     val todayDisplay = remember {
         SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date())
+    }
+
+    val todayAppointments = remember(allAppointments, todayIso) {
+        allAppointments.filter { it.appointmentDate == todayIso && it.status != "Cancelled" }
     }
 
     // Calculate today's summary supporting both date formats
@@ -226,6 +239,18 @@ fun DashboardScreen(
                 onClick = onNavigateToBalanceSheet
             )
 
+            // 5. Calendar Appointments & Phone Bookings (Purple Accent) -> Opens AppointmentsScreen
+            ActionButtonCard(
+                title = "Appointments & Bookings",
+                subtitle = if (todayAppointments.isNotEmpty()) "${todayAppointments.size} appointments today • Tap to book & manage" else "Book caller appointments & manage time slots",
+                icon = Icons.Default.CalendarMonth,
+                accentColor = AppointmentPurple,
+                containerColor = AppointmentPurpleContainer,
+                textColor = AppointmentPurpleText,
+                testTag = "action_appointments",
+                onClick = onNavigateToAppointments
+            )
+
             // 2. TODAY'S NET BALANCE SECTION (BELOW QUICK ACTIONS)
             Card(
                 colors = CardDefaults.cardColors(
@@ -291,6 +316,123 @@ fun DashboardScreen(
                             amount = todayBills,
                             color = BillOrange
                         )
+                    }
+                }
+            }
+
+            // TODAY'S APPOINTMENTS PREVIEW
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, AppointmentPurple.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(AppointmentPurpleContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CalendarMonth,
+                                    contentDescription = null,
+                                    tint = AppointmentPurple,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Today's Appointments",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = if (todayAppointments.isEmpty()) "No bookings scheduled today" else "${todayAppointments.size} booking(s) scheduled",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        TextButton(
+                            onClick = onNavigateToAppointments,
+                            modifier = Modifier.testTag("dashboard_view_all_appointments_button")
+                        ) {
+                            Text(
+                                text = "View All",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = AppointmentPurple
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                imageVector = Icons.Default.ArrowForward,
+                                contentDescription = null,
+                                tint = AppointmentPurple,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+
+                    if (todayAppointments.isNotEmpty()) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                        todayAppointments.take(3).forEach { appt ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                                    .clickable { onNavigateToAppointments() }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = appt.customerName,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "${appt.appointmentTime} • ${appt.serviceName}",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = AppointmentPurpleContainer
+                                ) {
+                                    Text(
+                                        text = appt.status,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = AppointmentPurpleText,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }

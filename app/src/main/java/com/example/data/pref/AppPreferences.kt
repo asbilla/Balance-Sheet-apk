@@ -19,6 +19,9 @@ class AppPreferences(context: Context) {
     private val _themeModeFlow = MutableStateFlow(getThemeMode())
     val themeModeFlow: StateFlow<String> = _themeModeFlow.asStateFlow()
 
+    private val _appointmentSettingsFlow = MutableStateFlow(getAppointmentSettings())
+    val appointmentSettingsFlow: StateFlow<com.example.data.model.AppointmentSettings> = _appointmentSettingsFlow.asStateFlow()
+
     fun getThemeMode(): String {
         return prefs.getString(KEY_THEME_MODE, "System") ?: "System"
     }
@@ -57,6 +60,50 @@ class AppPreferences(context: Context) {
             .putString(KEY_EMAIL, profile.email.trim())
             .apply()
         _businessProfileFlow.value = profile
+    }
+
+    fun getAppointmentSettings(): com.example.data.model.AppointmentSettings {
+        val enabled = prefs.getBoolean(KEY_APPOINTMENTS_ENABLED, true)
+        val slotDuration = prefs.getInt(KEY_SLOT_DURATION, 30)
+        val startH = prefs.getInt(KEY_START_HOUR, 9)
+        val startM = prefs.getInt(KEY_START_MINUTE, 0)
+        val endH = prefs.getInt(KEY_END_HOUR, 18)
+        val endM = prefs.getInt(KEY_END_MINUTE, 0)
+        val buffer = prefs.getInt(KEY_BUFFER_MINUTES, 0)
+        val daysStr = prefs.getString(KEY_WORKING_DAYS, "1,2,3,4,5,6") ?: "1,2,3,4,5,6"
+        val days = try {
+            daysStr.split(",").filter { it.isNotBlank() }.map { it.toInt() }.toSet()
+        } catch (_: Exception) {
+            setOf(1, 2, 3, 4, 5, 6)
+        }
+        return com.example.data.model.AppointmentSettings(
+            bookingEnabled = enabled,
+            slotDurationMinutes = slotDuration,
+            startHour = startH,
+            startMinute = startM,
+            endHour = endH,
+            endMinute = endM,
+            bufferMinutes = buffer,
+            workingDays = days
+        )
+    }
+
+    fun setAppointmentSettings(settings: com.example.data.model.AppointmentSettings) {
+        prefs.edit()
+            .putBoolean(KEY_APPOINTMENTS_ENABLED, settings.bookingEnabled)
+            .putInt(KEY_SLOT_DURATION, settings.slotDurationMinutes)
+            .putInt(KEY_START_HOUR, settings.startHour)
+            .putInt(KEY_START_MINUTE, settings.startMinute)
+            .putInt(KEY_END_HOUR, settings.endHour)
+            .putInt(KEY_END_MINUTE, settings.endMinute)
+            .putInt(KEY_BUFFER_MINUTES, settings.bufferMinutes)
+            .putString(KEY_WORKING_DAYS, settings.workingDays.joinToString(","))
+            .apply()
+        _appointmentSettingsFlow.value = settings
+    }
+
+    fun generateTimeSlots(settings: com.example.data.model.AppointmentSettings = getAppointmentSettings()): List<String> {
+        return settings.generateSlots()
     }
 
     fun isConfigured(): Boolean {
@@ -152,6 +199,14 @@ class AppPreferences(context: Context) {
         private const val KEY_EMAIL = "email_address"
         private const val KEY_CACHED_PRODUCTS = "cached_products_json"
         private const val KEY_THEME_MODE = "theme_mode"
+        private const val KEY_APPOINTMENTS_ENABLED = "appointments_enabled"
+        private const val KEY_SLOT_DURATION = "appointment_slot_duration"
+        private const val KEY_START_HOUR = "appointment_start_hour"
+        private const val KEY_START_MINUTE = "appointment_start_minute"
+        private const val KEY_END_HOUR = "appointment_end_hour"
+        private const val KEY_END_MINUTE = "appointment_end_minute"
+        private const val KEY_BUFFER_MINUTES = "appointment_buffer_minutes"
+        private const val KEY_WORKING_DAYS = "appointment_working_days"
 
         @Volatile
         private var INSTANCE: AppPreferences? = null

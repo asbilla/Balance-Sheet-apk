@@ -2,7 +2,9 @@ package com.example.data.repository
 
 import android.content.Context
 import com.example.data.local.AppDatabase
+import com.example.data.local.AppointmentEntity
 import com.example.data.local.TransactionEntity
+import com.example.data.model.AppointmentSettings
 import com.example.data.pref.AppPreferences
 import com.example.data.remote.RemoteTransaction
 import com.example.data.remote.SheetsApiService
@@ -17,11 +19,46 @@ class TransactionRepository(
 ) {
 
     private val dao = database.transactionDao()
+    private val appointmentDao = database.appointmentDao()
 
     val allTransactions: Flow<List<TransactionEntity>> = dao.getAllTransactions()
     val unsyncedCount: Flow<Int> = dao.getUnsyncedCount()
     val businessProfile = preferences.businessProfileFlow
     val themeMode = preferences.themeModeFlow
+    val appointmentSettings = preferences.appointmentSettingsFlow
+
+    val allAppointments: Flow<List<AppointmentEntity>> = appointmentDao.getAllAppointments()
+
+    fun getAppointmentsForDate(date: String): Flow<List<AppointmentEntity>> =
+        appointmentDao.getAppointmentsForDate(date)
+
+    fun getUpcomingAppointments(fromDate: String): Flow<List<AppointmentEntity>> =
+        appointmentDao.getUpcomingAppointments(fromDate)
+
+    fun getActiveAppointmentCountForDate(date: String): Flow<Int> =
+        appointmentDao.getActiveAppointmentCountForDate(date)
+
+    suspend fun saveAppointment(appointment: AppointmentEntity): Long =
+        appointmentDao.insertAppointment(appointment)
+
+    suspend fun updateAppointment(appointment: AppointmentEntity) =
+        appointmentDao.updateAppointment(appointment)
+
+    suspend fun deleteAppointment(appointment: AppointmentEntity) =
+        appointmentDao.deleteAppointment(appointment)
+
+    suspend fun deleteAppointmentById(id: Long) =
+        appointmentDao.deleteAppointmentById(id)
+
+    suspend fun updateAppointmentStatus(id: Long, newStatus: String) =
+        appointmentDao.updateStatus(id, newStatus)
+
+    fun getAppointmentSettings(): AppointmentSettings = preferences.getAppointmentSettings()
+
+    fun setAppointmentSettings(settings: AppointmentSettings) = preferences.setAppointmentSettings(settings)
+
+    fun generateTimeSlots(settings: AppointmentSettings = getAppointmentSettings()): List<String> =
+        preferences.generateTimeSlots(settings)
 
     fun getThemeMode(): String = preferences.getThemeMode()
     fun setThemeMode(mode: String) = preferences.setThemeMode(mode)
