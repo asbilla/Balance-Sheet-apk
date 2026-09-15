@@ -21,6 +21,10 @@ class TransactionRepository(
     val allTransactions: Flow<List<TransactionEntity>> = dao.getAllTransactions()
     val unsyncedCount: Flow<Int> = dao.getUnsyncedCount()
     val businessProfile = preferences.businessProfileFlow
+    val themeMode = preferences.themeModeFlow
+
+    fun getThemeMode(): String = preferences.getThemeMode()
+    fun setThemeMode(mode: String) = preferences.setThemeMode(mode)
 
     fun getBusinessProfile(): com.example.data.pref.BusinessProfile = preferences.getBusinessProfile()
 

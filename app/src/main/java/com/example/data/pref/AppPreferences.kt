@@ -16,6 +16,18 @@ class AppPreferences(context: Context) {
     private val _businessProfileFlow = MutableStateFlow(getBusinessProfile())
     val businessProfileFlow: StateFlow<BusinessProfile> = _businessProfileFlow.asStateFlow()
 
+    private val _themeModeFlow = MutableStateFlow(getThemeMode())
+    val themeModeFlow: StateFlow<String> = _themeModeFlow.asStateFlow()
+
+    fun getThemeMode(): String {
+        return prefs.getString(KEY_THEME_MODE, "System") ?: "System"
+    }
+
+    fun setThemeMode(mode: String) {
+        prefs.edit().putString(KEY_THEME_MODE, mode).apply()
+        _themeModeFlow.value = mode
+    }
+
     fun getWebAppUrl(): String {
         return prefs.getString(KEY_WEB_APP_URL, "")?.trim() ?: ""
     }
@@ -139,6 +151,7 @@ class AppPreferences(context: Context) {
         private const val KEY_PHONE_MOBILE = "phone_mobile"
         private const val KEY_EMAIL = "email_address"
         private const val KEY_CACHED_PRODUCTS = "cached_products_json"
+        private const val KEY_THEME_MODE = "theme_mode"
 
         @Volatile
         private var INSTANCE: AppPreferences? = null

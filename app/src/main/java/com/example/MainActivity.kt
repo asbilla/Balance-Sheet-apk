@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavType
@@ -30,9 +32,11 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val repository = TransactionRepository.getInstance(applicationContext)
-
+        
         setContent {
-            MyApplicationTheme {
+            val themeMode by repository.themeMode.collectAsState(initial = repository.getThemeMode())
+            
+            MyApplicationTheme(themeMode = themeMode) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

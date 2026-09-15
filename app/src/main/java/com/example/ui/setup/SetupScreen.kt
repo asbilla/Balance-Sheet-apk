@@ -33,8 +33,12 @@ import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SettingsBrightness
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -42,6 +46,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -55,6 +61,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -103,6 +110,8 @@ fun SetupScreen(
     var testSuccess by remember { mutableStateOf<Boolean?>(null) }
     var showCodeDialog by remember { mutableStateOf(false) }
 
+    val currentTheme by repository.themeMode.collectAsState(initial = repository.getThemeMode())
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -126,9 +135,71 @@ fun SetupScreen(
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // 1. BUSINESS PROFILE DETAILS (ON TOP AS REQUESTED)
+            // NEW & PROMINENT THEME SELECTION SECTION
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = BalanceBlue.copy(alpha = 0.08f)
+                ),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.5.dp, BalanceBlue.copy(alpha = 0.3f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Palette,
+                            contentDescription = null,
+                            tint = BalanceBlue,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Choose Application Theme",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = BalanceBlue
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ThemeOptionItem(
+                            label = "System",
+                            selected = currentTheme == "System",
+                            onClick = { repository.setThemeMode("System") },
+                            modifier = Modifier.weight(1f)
+                        )
+                        ThemeOptionItem(
+                            label = "Light",
+                            selected = currentTheme == "Light",
+                            onClick = { repository.setThemeMode("Light") },
+                            modifier = Modifier.weight(1f)
+                        )
+                        ThemeOptionItem(
+                            label = "Dark",
+                            selected = currentTheme == "Dark",
+                            onClick = { repository.setThemeMode("Dark") },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 4.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+            )
+
+            // 1. BUSINESS PROFILE DETAILS
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -715,6 +786,34 @@ fun SetupScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun ThemeOptionItem(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.height(40.dp),
+        shape = RoundedCornerShape(8.dp),
+        color = if (selected) BalanceBlue else Color.Transparent,
+        border = BorderStroke(1.dp, if (selected) BalanceBlue else MaterialTheme.colorScheme.outlineVariant),
+        contentColor = if (selected) Color.White else MaterialTheme.colorScheme.onSurface
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = label,
+                fontSize = 13.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+            )
         }
     }
 }
