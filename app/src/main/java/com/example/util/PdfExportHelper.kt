@@ -264,20 +264,6 @@ object PdfExportHelper {
         }
     }
 
-    /**
-     * Launches a browser / system download for Google Sheets PDF URL
-     */
-    fun openSheetsPdfDownload(context: Context, pdfUrl: String) {
-        try {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(pdfUrl)).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            Toast.makeText(context, "Unable to open download URL: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
-    }
-
     fun toCanonicalDate(dateStr: String): String {
         val trimmed = dateStr.trim()
         val parts = trimmed.split("-")

@@ -197,43 +197,6 @@ fun AppointmentsScreen(
                 },
                 actions = {
                     IconButton(
-                        onClick = {
-                            if (!isSyncing) {
-                                isSyncing = true
-                                scope.launch {
-                                    val res = repository.syncBothWays()
-                                    isSyncing = false
-                                    if (res.isSuccess) {
-                                        val data = res.getOrNull()
-                                        Toast.makeText(
-                                            context,
-                                            data?.message ?: "Appointments synced with Google Sheets",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    } else {
-                                        val err = res.exceptionOrNull()?.localizedMessage ?: "Sync timed out"
-                                        Toast.makeText(context, "Sync note: $err. Saved locally.", Toast.LENGTH_LONG).show()
-                                    }
-                                }
-                            }
-                        },
-                        enabled = !isSyncing,
-                        modifier = Modifier.testTag("appointments_sync_button")
-                    ) {
-                        if (isSyncing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.Sync,
-                                contentDescription = "Sync Appointments with Sheets",
-                                tint = AppointmentPurple
-                            )
-                        }
-                    }
-                    IconButton(
                         onClick = onNavigateToSettings,
                         modifier = Modifier.testTag("appointments_settings_button")
                     ) {

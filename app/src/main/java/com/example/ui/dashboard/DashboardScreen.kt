@@ -23,12 +23,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.CloudQueue
-import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.MoneyOff
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -144,19 +144,6 @@ fun DashboardScreen(
                 },
                 actions = {
                     IconButton(
-                        onClick = {
-                            repository.triggerBackgroundSync()
-                            Toast.makeText(context, "Sync triggered...", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.testTag("sync_action_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CloudSync,
-                            contentDescription = "Sync",
-                            tint = if (unsyncedCount > 0) BillOrange else IncomeGreen
-                        )
-                    }
-                    IconButton(
                         onClick = onNavigateToSettings,
                         modifier = Modifier.testTag("settings_button")
                     ) {
@@ -190,7 +177,6 @@ fun DashboardScreen(
                 modifier = Modifier.padding(top = 4.dp)
             )
 
-            // 4 MAIN FULL-WIDTH ACTION BUTTONS AS REQUIRED:
             // 1. Daily Income (Green Accent) -> Opens EntryScreen configured for "Daily Income"
             ActionButtonCard(
                 title = "Daily Income",
@@ -249,6 +235,18 @@ fun DashboardScreen(
                 textColor = AppointmentPurpleText,
                 testTag = "action_appointments",
                 onClick = onNavigateToAppointments
+            )
+
+            // 6. Menu & Services Manager (Indigo / Slate Accent) -> Opens Menu & Services in Settings
+            ActionButtonCard(
+                title = "Menu & Services",
+                subtitle = "Manage local products, service items, prices & categories",
+                icon = Icons.Default.Category,
+                accentColor = Color(0xFF4F46E5),
+                containerColor = Color(0xFFEEF2FF),
+                textColor = Color(0xFF312E81),
+                testTag = "action_menu_services",
+                onClick = onNavigateToSettings
             )
 
             // 2. TODAY'S NET BALANCE SECTION (BELOW QUICK ACTIONS)
@@ -437,13 +435,9 @@ fun DashboardScreen(
                 }
             }
 
-            // 3. SYNC STATUS (AT BOTTOM)
-            SyncStatusBanner(
-                unsyncedCount = unsyncedCount,
-                onSyncClick = {
-                    repository.triggerBackgroundSync()
-                    Toast.makeText(context, "Syncing unsynced entries with Sheets...", Toast.LENGTH_SHORT).show()
-                }
+            // 3. LOCAL STORAGE STATUS (AT BOTTOM)
+            LocalStorageStatusBanner(
+                onManageClick = onNavigateToSettings
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -543,45 +537,52 @@ fun TodayMetricItem(
 }
 
 @Composable
-fun SyncStatusBanner(
-    unsyncedCount: Int,
-    onSyncClick: () -> Unit
+fun LocalStorageStatusBanner(
+    onManageClick: () -> Unit
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onSyncClick),
+            .clickable(onClick = onManageClick),
         shape = RoundedCornerShape(12.dp),
-        color = if (unsyncedCount > 0) Color(0xFFFEF3C7) else Color(0xFFDCFCE7)
+        color = Color(0xFFDCFCE7)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
                 Icon(
-                    imageVector = if (unsyncedCount > 0) Icons.Default.CloudQueue else Icons.Default.CloudDone,
-                    contentDescription = "Sync Status",
-                    tint = if (unsyncedCount > 0) Color(0xFFD97706) else Color(0xFF16A34A),
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = "Local Storage",
+                    tint = Color(0xFF16A34A),
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = if (unsyncedCount > 0) "$unsyncedCount entries queued to sync" else "All entries synced to Sheets",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = if (unsyncedCount > 0) Color(0xFF92400E) else Color(0xFF166534)
-                )
+                Column {
+                    Text(
+                        text = "Local Storage Active",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF166534)
+                    )
+                    Text(
+                        text = "Business, Menu, Sales & Appointments saved on device",
+                        fontSize = 11.sp,
+                        color = Color(0xFF15803D)
+                    )
+                }
             }
-            if (unsyncedCount > 0) {
-                Text(
-                    text = "Sync Now",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFFB45309)
-                )
-            }
+            Text(
+                text = "Settings",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF15803D)
+            )
         }
     }
 }

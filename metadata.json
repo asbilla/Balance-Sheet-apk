@@ -1,6 +1,6 @@
 {
   "name": "Daily Report",
-  "description": "Daily Business Reporting Tool connected to Google Sheets with offline caching and day-by-day balance sheets.",
+  "description": "Offline-first Daily Business Reporting & POS tool with local storage for business details, menu items, sales data, and appointments.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

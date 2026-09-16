@@ -136,45 +136,16 @@ fun BalanceSheetScreen(
     val scope = rememberCoroutineScope()
 
     val localTransactions by repository.allTransactions.collectAsStateWithLifecycle(initialValue = emptyList())
-    var remoteTransactions by remember { mutableStateOf<List<RemoteTransaction>>(emptyList()) }
-    var isRefreshing by remember { mutableStateOf(false) }
     var isDownloadingPdf by remember { mutableStateOf(false) }
     var editingTransaction by remember { mutableStateOf<EditTransactionState?>(null) }
     var isSavingEdit by remember { mutableStateOf(false) }
     var transactionToDelete by remember { mutableStateOf<DisplayTransaction?>(null) }
     var isDeletingTx by remember { mutableStateOf(false) }
 
-    // Manual two-way sync triggered ONLY by user button click (not automatic on screen open)
-    fun refreshSheetData() {
-        if (isRefreshing) return
-        isRefreshing = true
-        scope.launch {
-            val result = repository.syncBothWays()
-            isRefreshing = false
-            if (result.isSuccess) {
-                val syncData = result.getOrNull()
-                Toast.makeText(
-                    context,
-                    syncData?.message ?: "Two-way sync complete with spreadsheet",
-                    Toast.LENGTH_SHORT
-                ).show()
-            } else {
-                val err = result.exceptionOrNull()?.localizedMessage ?: "Sync timed out or network issue"
-                Toast.makeText(
-                    context,
-                    "Sync note: $err. Showing local offline data.",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-        }
-    }
-
-    // Merge and group transactions by Date with continuous cumulative balance carry-over
-    val dateSummaries by remember(localTransactions, remoteTransactions) {
+    // Group local transactions by Date with continuous cumulative balance carry-over
+    val dateSummaries by remember(localTransactions) {
         derivedStateOf {
-            // Combine local and remote without duplicating (match by ID/UUID)
             val combined = mutableListOf<DisplayTransaction>()
-            val localUuids = localTransactions.map { it.uuid }.toSet()
 
             // Add all local transactions
             for (local in localTransactions) {
@@ -185,25 +156,9 @@ fun BalanceSheetScreen(
                         type = local.type,
                         category = local.category,
                         amount = local.amount,
-                        isSynced = local.isSynced
+                        isSynced = true
                     )
                 )
-            }
-
-            // Add remote transactions that aren't already represented locally
-            for (remote in remoteTransactions) {
-                if (remote.id.isEmpty() || !localUuids.contains(remote.id)) {
-                    combined.add(
-                        DisplayTransaction(
-                            id = remote.id.ifEmpty { "remote-${remote.date}-${remote.amount}" },
-                            date = normalizeDateIso(remote.date),
-                            type = remote.type,
-                            category = remote.notes,
-                            amount = remote.amount,
-                            isSynced = true
-                        )
-                    )
-                }
             }
 
             // Group by Date
@@ -248,7 +203,7 @@ fun BalanceSheetScreen(
     val overallBills = dateSummaries.sumOf { it.totalBills }
     val overallNet = overallIncome - (overallExpenses + overallBills)
 
-    // Handle PDF download of the whole spreadsheet
+    // Handle PDF export of the balance sheet directly to local device storage
     fun handleDownloadPdf() {
         if (dateSummaries.isEmpty()) {
             Toast.makeText(context, "No balance sheet entries to export", Toast.LENGTH_SHORT).show()
@@ -257,7 +212,6 @@ fun BalanceSheetScreen(
         isDownloadingPdf = true
         scope.launch {
             try {
-                // 1. Export local formatted PDF to Downloads
                 val profile = repository.getBusinessProfile()
                 val file = PdfExportHelper.exportLocalPdf(
                     context = context,
@@ -268,17 +222,6 @@ fun BalanceSheetScreen(
                     overallNet = overallNet,
                     profile = profile
                 )
-
-                // 2. Also trigger official Google Sheets PDF export if connected
-                if (repository.isConfigured()) {
-                    val remoteResult = repository.fetchPdfExportUrl()
-                    if (remoteResult.isSuccess) {
-                        val url = remoteResult.getOrNull()
-                        if (!url.isNullOrBlank()) {
-                            PdfExportHelper.openSheetsPdfDownload(context, url)
-                        }
-                    }
-                }
 
                 if (file != null) {
                     Toast.makeText(context, "Saved to Downloads: ${file.name}", Toast.LENGTH_SHORT).show()
@@ -334,23 +277,6 @@ fun BalanceSheetScreen(
                             )
                         }
                     }
-                    IconButton(
-                        onClick = { refreshSheetData() },
-                        enabled = !isRefreshing,
-                        modifier = Modifier.testTag("refresh_balancesheet_button")
-                    ) {
-                        if (isRefreshing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = "Refresh from Sheets"
-                            )
-                        }
-                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -359,7 +285,7 @@ fun BalanceSheetScreen(
         },
         modifier = modifier.fillMaxSize()
     ) { innerPadding ->
-        if (dateSummaries.isEmpty() && !isRefreshing) {
+        if (dateSummaries.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -531,10 +457,9 @@ fun BalanceSheetScreen(
                             if (result.isSuccess) {
                                 Toast.makeText(
                                     context,
-                                    result.getOrDefault("Transaction deleted & synced!"),
+                                    result.getOrDefault("Transaction deleted"),
                                     Toast.LENGTH_SHORT
                                 ).show()
-                                refreshSheetData()
                             } else {
                                 Toast.makeText(
                                     context,
@@ -597,11 +522,9 @@ fun BalanceSheetScreen(
                     if (result.isSuccess) {
                         Toast.makeText(
                             context,
-                            result.getOrDefault("Amount updated & synced!"),
+                            result.getOrDefault("Amount updated"),
                             Toast.LENGTH_SHORT
                         ).show()
-                        // Refresh data from sheets to ensure calculations are up to date
-                        refreshSheetData()
                     } else {
                         Toast.makeText(
                             context,
@@ -1002,15 +925,6 @@ fun TransactionItemRow(
             )
 
             Spacer(modifier = Modifier.width(6.dp))
-
-            Icon(
-                imageVector = if (tx.isSynced) Icons.Default.CheckCircle else Icons.Default.CloudQueue,
-                contentDescription = if (tx.isSynced) "Synced to Sheets" else "Pending Sync",
-                tint = if (tx.isSynced) IncomeGreen else BillOrange,
-                modifier = Modifier.size(16.dp)
-            )
-
-            Spacer(modifier = Modifier.width(2.dp))
 
             // Dedicated Edit Button
             IconButton(

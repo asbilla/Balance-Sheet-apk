@@ -162,20 +162,10 @@ fun EntryScreen(
         else -> Quadruple(BillOrange, BillOrangeContainer, BillOrangeText, Icons.Default.ReceiptLong)
     }
 
-    // Load POS Products for Daily Income
+    // Load POS Products for Daily Income from local storage
     LaunchedEffect(entryType) {
         if (entryType == "Daily Income") {
-            products = repository.getProducts(forceRefresh = false)
-            // Fetch latest from Google Sheets "Products" tab in background
-            scope.launch {
-                val refreshResult = repository.refreshProductsFromSheets()
-                if (refreshResult.isSuccess) {
-                    val remoteList = refreshResult.getOrDefault(emptyList())
-                    if (remoteList.isNotEmpty()) {
-                        products = remoteList
-                    }
-                }
-            }
+            products = repository.getCachedProducts()
         }
     }
 

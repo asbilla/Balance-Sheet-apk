@@ -66,10 +66,7 @@ fun AppNavigation(
 ) {
     val navController = rememberNavController()
 
-    // Determine start destination based on whether Google Apps Script URL is configured
-    val startDestination = remember {
-        if (repository.isConfigured()) Screen.Dashboard.route else Screen.Setup.route
-    }
+    val startDestination = Screen.Dashboard.route
 
     NavHost(
         navController = navController,

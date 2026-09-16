@@ -5,11 +5,11 @@ import com.example.data.local.AppDatabase
 import com.example.data.local.AppointmentEntity
 import com.example.data.local.TransactionEntity
 import com.example.data.model.AppointmentSettings
+import com.example.data.model.ProductItem
 import com.example.data.pref.AppPreferences
+import com.example.data.pref.BusinessProfile
 import com.example.data.remote.RemoteAppointment
 import com.example.data.remote.RemoteTransaction
-import com.example.data.remote.SheetsApiService
-import com.example.worker.SyncWorker
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 
@@ -24,8 +24,7 @@ data class SyncResult(
 class TransactionRepository(
     private val context: Context,
     private val database: AppDatabase = AppDatabase.getDatabase(context),
-    private val preferences: AppPreferences = AppPreferences.getInstance(context),
-    private val apiService: SheetsApiService = SheetsApiService()
+    private val preferences: AppPreferences = AppPreferences.getInstance(context)
 ) {
 
     private val dao = database.transactionDao()
@@ -37,6 +36,7 @@ class TransactionRepository(
     val businessProfile = preferences.businessProfileFlow
     val themeMode = preferences.themeModeFlow
     val appointmentSettings = preferences.appointmentSettingsFlow
+    val products = preferences.productsFlow
 
     val allAppointments: Flow<List<AppointmentEntity>> = appointmentDao.getAllAppointments()
 
@@ -49,56 +49,26 @@ class TransactionRepository(
     fun getActiveAppointmentCountForDate(date: String): Flow<Int> =
         appointmentDao.getActiveAppointmentCountForDate(date)
 
-    suspend fun saveAppointment(appointment: AppointmentEntity, syncToSheets: Boolean = true): Long {
-        val id = appointmentDao.insertAppointment(appointment.copy(isSynced = false))
-        if (syncToSheets) {
-            val url = getWebAppUrl()
-            if (url.isNotBlank() && !url.contains("offline-demo")) {
-                val insertedEntity = appointment.copy(id = id)
-                val res = apiService.postAppointment(url, insertedEntity)
-                if (res.isSuccess) {
-                    appointmentDao.markAsSyncedByIds(listOf(id))
-                }
-            }
-        }
-        return id
+    suspend fun saveAppointment(appointment: AppointmentEntity, @Suppress("UNUSED_PARAMETER") syncToSheets: Boolean = false): Long {
+        return appointmentDao.insertAppointment(appointment.copy(isSynced = true))
     }
 
-    suspend fun updateAppointment(appointment: AppointmentEntity, syncToSheets: Boolean = true) {
-        appointmentDao.updateAppointment(appointment.copy(isSynced = false))
-        if (syncToSheets) {
-            val url = getWebAppUrl()
-            if (url.isNotBlank() && !url.contains("offline-demo")) {
-                val res = apiService.postAppointment(url, appointment)
-                if (res.isSuccess) {
-                    appointmentDao.markAsSyncedByIds(listOf(appointment.id))
-                }
-            }
-        }
+    suspend fun updateAppointment(appointment: AppointmentEntity, @Suppress("UNUSED_PARAMETER") syncToSheets: Boolean = false) {
+        appointmentDao.updateAppointment(appointment.copy(isSynced = true))
     }
 
     suspend fun deleteAppointment(appointment: AppointmentEntity): Result<String> {
         appointmentDao.deleteAppointment(appointment)
-        val url = getWebAppUrl()
-        if (url.isNotBlank() && !url.contains("offline-demo")) {
-            return apiService.deleteAppointmentOnSheets(url, appointment.uuid)
-        }
-        return Result.success("Deleted locally")
+        return Result.success("Deleted from local storage")
     }
 
     suspend fun deleteAppointmentById(id: Long): Result<String> {
         appointmentDao.deleteAppointmentById(id)
-        return Result.success("Deleted locally")
+        return Result.success("Deleted from local storage")
     }
 
     suspend fun updateAppointmentStatus(id: Long, newStatus: String) {
         appointmentDao.updateStatus(id, newStatus)
-        // Trigger background sync or direct sync
-        val url = getWebAppUrl()
-        if (url.isNotBlank() && !url.contains("offline-demo")) {
-            // Find uuid and post update
-            // Background sync will pick up or push on next sync
-        }
     }
 
     fun getAppointmentSettings(): AppointmentSettings = preferences.getAppointmentSettings()
@@ -111,18 +81,14 @@ class TransactionRepository(
     fun getThemeMode(): String = preferences.getThemeMode()
     fun setThemeMode(mode: String) = preferences.setThemeMode(mode)
 
-    fun getBusinessProfile(): com.example.data.pref.BusinessProfile = preferences.getBusinessProfile()
+    fun getBusinessProfile(): BusinessProfile = preferences.getBusinessProfile()
 
     suspend fun saveBusinessProfile(
-        profile: com.example.data.pref.BusinessProfile,
-        syncToSheets: Boolean = true
+        profile: BusinessProfile,
+        @Suppress("UNUSED_PARAMETER") syncToSheets: Boolean = false
     ): Result<String> {
         preferences.setBusinessProfile(profile)
-        val url = getWebAppUrl()
-        if (syncToSheets && url.isNotBlank() && !url.contains("offline-demo")) {
-            return apiService.postBusinessProfile(url, profile)
-        }
-        return Result.success("Saved locally")
+        return Result.success("Business details saved locally")
     }
 
     suspend fun saveTransaction(
@@ -137,222 +103,42 @@ class TransactionRepository(
             type = type,
             category = category.trim(),
             amount = amount,
-            isSynced = false
+            isSynced = true
         )
-        val id = dao.insertTransaction(entity)
-
-        // Trigger background sync task
-        SyncWorker.enqueueSync(context)
-
-        return id
+        return dao.insertTransaction(entity)
     }
 
     fun triggerBackgroundSync() {
-        SyncWorker.enqueueSync(context)
+        // No-op in local storage mode
     }
 
     suspend fun syncBothWays(): Result<SyncResult> {
-        val url = getWebAppUrl()
-        if (url.isBlank() || url.contains("offline-demo")) {
-            return Result.failure(IllegalStateException("Google Apps Script URL is not configured."))
-        }
-
-        return try {
-            var txPushed = 0
-            var txPulled = 0
-            var apptPushed = 0
-            var apptPulled = 0
-
-            // 1. Push unsynced transactions using fast batch POST
-            val unsyncedTx = dao.getUnsyncedTransactions()
-            if (unsyncedTx.isNotEmpty()) {
-                val pushRes = apiService.postTransactionsBatch(url, unsyncedTx)
-                if (pushRes.isSuccess) {
-                    dao.markAsSyncedByUuid(unsyncedTx.map { it.uuid })
-                    txPushed = unsyncedTx.size
-                } else {
-                    // Fallback to individual
-                    for (tx in unsyncedTx) {
-                        val singleRes = apiService.postTransaction(url, tx)
-                        if (singleRes.isSuccess) {
-                            dao.markAsSyncedByUuid(listOf(tx.uuid))
-                            txPushed++
-                        }
-                    }
-                }
-            }
-
-            // 2. Push unsynced appointments using fast batch POST
-            val unsyncedAppts = appointmentDao.getUnsyncedAppointments()
-            if (unsyncedAppts.isNotEmpty()) {
-                val pushApptRes = apiService.postAppointmentsBatch(url, unsyncedAppts)
-                if (pushApptRes.isSuccess) {
-                    appointmentDao.markAsSyncedByIds(unsyncedAppts.map { it.id })
-                    apptPushed = unsyncedAppts.size
-                } else {
-                    for (appt in unsyncedAppts) {
-                        val singleRes = apiService.postAppointment(url, appt)
-                        if (singleRes.isSuccess) {
-                            appointmentDao.markAsSyncedByIds(listOf(appt.id))
-                            apptPushed++
-                        }
-                    }
-                }
-            }
-
-            // 3. Pull transactions from spreadsheet & save any edits/new rows into local Room DB
-            val fetchTxResult = apiService.fetchTransactions(url)
-            if (fetchTxResult.isSuccess) {
-                val remoteList = fetchTxResult.getOrNull().orEmpty()
-                txPulled = syncRemoteTransactionsIntoLocal(remoteList)
-            } else {
-                return Result.failure(fetchTxResult.exceptionOrNull() ?: Exception("Failed fetching transactions"))
-            }
-
-            // 4. Pull appointments from spreadsheet & save any edits/new rows into local Room DB
-            val fetchApptResult = apiService.fetchAppointments(url)
-            if (fetchApptResult.isSuccess) {
-                val remoteAppts = fetchApptResult.getOrNull().orEmpty()
-                apptPulled = syncRemoteAppointmentsIntoLocal(remoteAppts)
-            }
-
-            val summaryMsg = "Two-way sync complete: $txPushed uploaded, local database up to date."
-            Result.success(
-                SyncResult(
-                    transactionsPushed = txPushed,
-                    transactionsPulled = txPulled,
-                    appointmentsPushed = apptPushed,
-                    appointmentsPulled = apptPulled,
-                    message = summaryMsg
-                )
-            )
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        return Result.success(SyncResult(message = "Local storage is active"))
     }
 
     suspend fun fetchRemoteTransactions(): Result<List<RemoteTransaction>> {
-        val syncRes = syncBothWays()
-        val url = preferences.getWebAppUrl()
-        return if (syncRes.isSuccess) {
-            apiService.fetchTransactions(url)
-        } else {
-            Result.failure(syncRes.exceptionOrNull() ?: Exception("Sync failed"))
-        }
+        return Result.success(emptyList())
     }
 
-    private suspend fun syncRemoteTransactionsIntoLocal(remoteList: List<RemoteTransaction>): Int {
-        if (remoteList.isEmpty()) return 0
-        var updatedCount = 0
-
-        val localList = dao.getAllTransactionsSync()
-        val localMap = localList.filter { it.uuid.isNotEmpty() }.associateBy { it.uuid }
-
-        for (remote in remoteList) {
-            val existing = if (remote.id.isNotEmpty()) localMap[remote.id] else null
-            if (existing != null) {
-                // If the user edited data directly on the spreadsheet, reflect those edits in local Room DB!
-                val amountDiff = Math.abs(existing.amount - remote.amount) > 0.001
-                val notesDiff = existing.category != remote.notes
-                val typeDiff = existing.type != remote.type
-                val dateDiff = existing.date != remote.date
-
-                if (amountDiff || notesDiff || typeDiff || dateDiff || !existing.isSynced) {
-                    val updated = existing.copy(
-                        date = remote.date,
-                        type = remote.type,
-                        category = remote.notes,
-                        amount = remote.amount,
-                        isSynced = true
-                    )
-                    dao.updateTransaction(updated)
-                    updatedCount++
-                }
-            } else {
-                // Brand new transaction entered directly into Google Sheets!
-                val newEntity = TransactionEntity(
-                    uuid = if (remote.id.isNotEmpty()) remote.id else UUID.randomUUID().toString(),
-                    date = remote.date,
-                    type = remote.type,
-                    category = remote.notes,
-                    amount = remote.amount,
-                    timestamp = System.currentTimeMillis(),
-                    isSynced = true
-                )
-                dao.insertTransaction(newEntity)
-                updatedCount++
-            }
-        }
-        return updatedCount
+    suspend fun fetchAppointments(): Result<List<RemoteAppointment>> {
+        return Result.success(emptyList())
     }
 
-    private suspend fun syncRemoteAppointmentsIntoLocal(remoteAppts: List<RemoteAppointment>): Int {
-        if (remoteAppts.isEmpty()) return 0
-        var updatedCount = 0
-
-        for (remote in remoteAppts) {
-            var local: AppointmentEntity? = if (remote.id.isNotEmpty()) {
-                appointmentDao.getAppointmentByUuid(remote.id)
-            } else null
-
-            if (local == null && remote.phone.isNotEmpty() && remote.date.isNotEmpty()) {
-                local = appointmentDao.findAppointment(remote.phone, remote.date, remote.time)
-            }
-
-            if (local != null) {
-                val statusDiff = local.status != remote.status
-                val nameDiff = local.customerName != remote.customerName
-                val serviceDiff = local.serviceName != remote.service
-                val notesDiff = local.notes != remote.notes
-                val priceDiff = Math.abs(local.price - remote.price) > 0.001
-
-                if (statusDiff || nameDiff || serviceDiff || notesDiff || priceDiff || !local.isSynced) {
-                    val updated = local.copy(
-                        customerName = if (remote.customerName.isNotBlank()) remote.customerName else local.customerName,
-                        serviceName = if (remote.service.isNotBlank()) remote.service else local.serviceName,
-                        status = remote.status,
-                        notes = remote.notes,
-                        price = if (remote.price > 0) remote.price else local.price,
-                        isSynced = true
-                    )
-                    appointmentDao.updateAppointment(updated)
-                    updatedCount++
-                }
-            } else {
-                val newAppt = AppointmentEntity(
-                    uuid = if (remote.id.isNotEmpty()) remote.id else UUID.randomUUID().toString(),
-                    customerName = remote.customerName,
-                    customerPhone = remote.phone,
-                    serviceName = remote.service,
-                    appointmentDate = remote.date,
-                    appointmentTime = remote.time,
-                    durationMinutes = remote.duration,
-                    price = remote.price,
-                    status = remote.status,
-                    notes = remote.notes,
-                    isSynced = true
-                )
-                appointmentDao.insertAppointment(newAppt)
-                updatedCount++
-            }
-        }
-        return updatedCount
-    }
-
-    suspend fun testConnection(url: String): Result<String> {
-        return apiService.testConnection(url)
+    suspend fun testConnection(@Suppress("UNUSED_PARAMETER") url: String): Result<String> {
+        return Result.success("Local storage active")
     }
 
     suspend fun fetchPdfExportUrl(): Result<String> {
-        val url = getWebAppUrl()
-        return apiService.fetchPdfExportUrl(url)
+        return Result.failure(Exception("PDF export generated locally on device"))
     }
 
-    fun getWebAppUrl(): String = preferences.getWebAppUrl()
+    fun getWebAppUrl(): String = ""
 
-    fun setWebAppUrl(url: String) = preferences.setWebAppUrl(url)
+    fun setWebAppUrl(@Suppress("UNUSED_PARAMETER") url: String) {
+        // No-op
+    }
 
-    fun isConfigured(): Boolean = preferences.isConfigured()
+    fun isConfigured(): Boolean = true
 
     suspend fun deleteTransaction(entity: TransactionEntity) {
         dao.deleteTransaction(entity)
@@ -365,28 +151,25 @@ class TransactionRepository(
         category: String,
         newAmount: Double
     ): Result<String> {
-        // 1. Update in local Room database
         val existing = dao.getTransactionByUuid(id)
-        val targetUuid = if (existing != null) {
+        if (existing != null) {
             val updated = existing.copy(
                 amount = newAmount,
                 category = category.ifBlank { existing.category },
-                isSynced = false
+                isSynced = true
             )
             dao.updateTransaction(updated)
-            existing.uuid
         } else {
             val byDateAndType = dao.getTransactionsByDateAndType(date, type).firstOrNull()
             if (byDateAndType != null) {
                 val updated = byDateAndType.copy(
                     amount = newAmount,
                     category = category.ifBlank { byDateAndType.category },
-                    isSynced = false
+                    isSynced = true
                 )
                 dao.updateTransaction(updated)
-                byDateAndType.uuid
             } else {
-                val assignedUuid = if (id.isNotBlank()) id else java.util.UUID.randomUUID().toString()
+                val assignedUuid = if (id.isNotBlank()) id else UUID.randomUUID().toString()
                 val newEntity = TransactionEntity(
                     uuid = assignedUuid,
                     date = date,
@@ -394,34 +177,12 @@ class TransactionRepository(
                     type = type,
                     category = category,
                     amount = newAmount,
-                    isSynced = false
+                    isSynced = true
                 )
                 dao.insertTransaction(newEntity)
-                assignedUuid
             }
         }
-
-        // 2. Update to Google Sheets spreadsheet immediately if connected
-        val url = getWebAppUrl()
-        if (url.isNotBlank() && !url.contains("offline-demo")) {
-            val remoteResult = apiService.updateTransactionOnSheets(
-                webAppUrl = url,
-                id = targetUuid,
-                date = date,
-                type = type,
-                amount = newAmount,
-                notes = category
-            )
-            if (remoteResult.isSuccess) {
-                dao.markAsSyncedByUuid(listOf(targetUuid))
-                return Result.success("Amount updated and synced to spreadsheet!")
-            } else {
-                SyncWorker.enqueueSync(context)
-                return Result.success("Amount updated locally; queued for Sheets sync.")
-            }
-        } else {
-            return Result.success("Amount updated locally.")
-        }
+        return Result.success("Amount updated in local storage")
     }
 
     suspend fun deleteTransactionPermanently(
@@ -429,7 +190,6 @@ class TransactionRepository(
         date: String,
         type: String
     ): Result<String> {
-        // 1. Delete from local Room database
         if (id.isNotBlank()) {
             dao.deleteByUuid(id)
             val parsedId = id.toLongOrNull()
@@ -437,95 +197,38 @@ class TransactionRepository(
                 dao.deleteById(parsedId)
             }
         } else if (date.isNotBlank() && type.isNotBlank()) {
-            // Only fallback to date & type if id is not available
             dao.deleteByDateAndType(date, type)
         }
-
-        // 2. Delete from Google Sheets if configured
-        val url = getWebAppUrl()
-        if (url.isNotBlank() && !url.contains("offline-demo")) {
-            val remoteResult = apiService.deleteTransactionOnSheets(
-                webAppUrl = url,
-                id = id,
-                date = date,
-                type = type
-            )
-            if (remoteResult.isSuccess) {
-                return Result.success("Transaction deleted from local database & Google Sheet!")
-            } else {
-                return Result.success("Deleted locally. Note: ${remoteResult.exceptionOrNull()?.message}")
-            }
-        } else {
-            return Result.success("Transaction deleted locally.")
-        }
+        return Result.success("Transaction deleted from local storage.")
     }
 
-    fun getCachedProducts(): List<com.example.data.model.ProductItem> = preferences.getCachedProducts()
+    fun getCachedProducts(): List<ProductItem> = preferences.getCachedProducts()
 
-    suspend fun getProducts(forceRefresh: Boolean = false): List<com.example.data.model.ProductItem> {
-        val cached = preferences.getCachedProducts()
-        val url = getWebAppUrl()
-        if (url.isBlank() || url.contains("offline-demo")) {
-            return cached
-        }
-
-        if (forceRefresh || cached.isEmpty()) {
-            val result = apiService.fetchProducts(url)
-            if (result.isSuccess) {
-                val remoteProducts = result.getOrDefault(emptyList())
-                if (remoteProducts.isNotEmpty()) {
-                    preferences.setCachedProducts(remoteProducts)
-                    return remoteProducts
-                }
-            }
-        }
-        return cached
+    suspend fun getProducts(@Suppress("UNUSED_PARAMETER") forceRefresh: Boolean = false): List<ProductItem> {
+        return preferences.getCachedProducts()
     }
 
-    suspend fun refreshProductsFromSheets(): Result<List<com.example.data.model.ProductItem>> {
-        val url = getWebAppUrl()
-        if (url.isBlank()) {
-            return Result.failure(IllegalStateException("Google Apps Script URL is not configured"))
-        }
-        val result = apiService.fetchProducts(url)
-        if (result.isSuccess) {
-            val remoteProducts = result.getOrDefault(emptyList())
-            if (remoteProducts.isNotEmpty()) {
-                preferences.setCachedProducts(remoteProducts)
-            } else {
-                // If remote is empty, attempt to push defaults
-                val defaults = preferences.getCachedProducts()
-                syncProductsToSheets(defaults)
-            }
-        }
-        return result
+    suspend fun refreshProductsFromSheets(): Result<List<ProductItem>> {
+        return Result.success(preferences.getCachedProducts())
     }
 
-    suspend fun syncProductsToSheets(products: List<com.example.data.model.ProductItem>) {
-        val url = getWebAppUrl()
-        if (url.isBlank() || url.contains("offline-demo")) return
-        
-        // Push each product to sheets
-        products.forEach { product ->
-            apiService.postProduct(url, product)
-        }
+    suspend fun syncProductsToSheets(@Suppress("UNUSED_PARAMETER") products: List<ProductItem>) {
+        // No-op in local storage mode
     }
 
-    suspend fun saveProduct(product: com.example.data.model.ProductItem): Result<String> {
-        val current = preferences.getCachedProducts().toMutableList()
-        val existingIndex = current.indexOfFirst { it.name.equals(product.name, ignoreCase = true) }
-        if (existingIndex >= 0) {
-            current[existingIndex] = product
-        } else {
-            current.add(product)
-        }
-        preferences.setCachedProducts(current)
+    suspend fun saveProduct(product: ProductItem): Result<String> {
+        preferences.saveProduct(product)
+        return Result.success("Saved to local menu items")
+    }
 
-        val url = getWebAppUrl()
-        if (url.isNotBlank() && !url.contains("offline-demo")) {
-            return apiService.postProduct(url, product)
-        }
-        return Result.success("Saved to local products cache")
+    fun deleteProduct(productName: String): Result<String> {
+        preferences.deleteProduct(productName)
+        return Result.success("Product deleted from local storage")
+    }
+
+    fun resetDefaultProducts(): Result<String> {
+        preferences.resetDefaultProducts()
+        return Result.success("Reset to default menu items")
     }
 
     companion object {

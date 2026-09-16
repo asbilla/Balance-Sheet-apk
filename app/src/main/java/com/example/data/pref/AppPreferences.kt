@@ -22,6 +22,9 @@ class AppPreferences(context: Context) {
     private val _appointmentSettingsFlow = MutableStateFlow(getAppointmentSettings())
     val appointmentSettingsFlow: StateFlow<com.example.data.model.AppointmentSettings> = _appointmentSettingsFlow.asStateFlow()
 
+    private val _productsFlow = MutableStateFlow(getCachedProducts())
+    val productsFlow: StateFlow<List<com.example.data.model.ProductItem>> = _productsFlow.asStateFlow()
+
     fun getThemeMode(): String {
         return prefs.getString(KEY_THEME_MODE, "System") ?: "System"
     }
@@ -107,7 +110,7 @@ class AppPreferences(context: Context) {
     }
 
     fun isConfigured(): Boolean {
-        return getWebAppUrl().isNotEmpty()
+        return true
     }
 
     fun clearUrl() {
@@ -151,7 +154,29 @@ class AppPreferences(context: Context) {
                 array.put(obj)
             }
             prefs.edit().putString(KEY_CACHED_PRODUCTS, array.toString()).apply()
+            _productsFlow.value = products
         } catch (_: Exception) {}
+    }
+
+    fun saveProduct(product: com.example.data.model.ProductItem) {
+        val current = getCachedProducts().toMutableList()
+        val index = current.indexOfFirst { it.name.equals(product.name, ignoreCase = true) }
+        if (index >= 0) {
+            current[index] = product
+        } else {
+            current.add(product)
+        }
+        setCachedProducts(current)
+    }
+
+    fun deleteProduct(productName: String) {
+        val current = getCachedProducts().toMutableList()
+        current.removeAll { it.name.equals(productName, ignoreCase = true) }
+        setCachedProducts(current)
+    }
+
+    fun resetDefaultProducts() {
+        setCachedProducts(getDefaultProducts())
     }
 
     private fun getDefaultProducts(): List<com.example.data.model.ProductItem> {
