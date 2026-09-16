@@ -23,6 +23,7 @@ import com.example.ui.appointments.AppointmentsScreen
 import com.example.ui.balancesheet.BalanceSheetScreen
 import com.example.ui.dashboard.DashboardScreen
 import com.example.ui.entry.EntryScreen
+import com.example.ui.setup.MenuManagementScreen
 import com.example.ui.setup.SetupScreen
 import com.example.ui.theme.MyApplicationTheme
 
@@ -54,6 +55,8 @@ sealed class Screen(val route: String) {
     data object Dashboard : Screen("dashboard")
     data object BalanceSheet : Screen("balancesheet")
     data object Appointments : Screen("appointments")
+    data object MenuManagement : Screen("menu_management")
+    data object StatementSelection : Screen("statement_selection")
     data object Entry : Screen("entry/{entryType}") {
         fun createRoute(entryType: String): String = "entry/${Uri.encode(entryType)}"
     }
@@ -103,6 +106,19 @@ fun AppNavigation(
                 },
                 onNavigateToSettings = {
                     navController.navigate(Screen.Setup.route)
+                },
+                onNavigateToMenuManagement = {
+                    navController.navigate(Screen.MenuManagement.route)
+                }
+            )
+        }
+
+        // Menu & Services Management Screen
+        composable(Screen.MenuManagement.route) {
+            MenuManagementScreen(
+                repository = repository,
+                onNavigateBack = {
+                    navController.popBackStack()
                 }
             )
         }
@@ -144,6 +160,19 @@ fun AppNavigation(
         // Day-by-Day Balance Sheet Screen
         composable(Screen.BalanceSheet.route) {
             BalanceSheetScreen(
+                repository = repository,
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onNavigateToStatementSelection = {
+                    navController.navigate(Screen.StatementSelection.route)
+                }
+            )
+        }
+
+        // Statement Selection Screen
+        composable(Screen.StatementSelection.route) {
+            com.example.ui.balancesheet.StatementSelectionScreen(
                 repository = repository,
                 onNavigateBack = {
                     navController.popBackStack()

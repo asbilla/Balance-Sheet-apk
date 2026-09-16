@@ -85,6 +85,7 @@ fun DashboardScreen(
     onNavigateToBalanceSheet: () -> Unit,
     onNavigateToAppointments: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToMenuManagement: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -246,7 +247,7 @@ fun DashboardScreen(
                 containerColor = Color(0xFFEEF2FF),
                 textColor = Color(0xFF312E81),
                 testTag = "action_menu_services",
-                onClick = onNavigateToSettings
+                onClick = onNavigateToMenuManagement
             )
 
             // 2. TODAY'S NET BALANCE SECTION (BELOW QUICK ACTIONS)

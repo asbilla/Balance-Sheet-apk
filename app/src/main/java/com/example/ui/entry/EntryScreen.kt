@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.EditCalendar
 import androidx.compose.material.icons.filled.MoneyOff
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Refresh
@@ -934,18 +935,45 @@ fun InvoiceDialog(
                 Text(text = "Thank you for your business!", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = Color.Gray, fontSize = 14.sp)
                 Spacer(modifier = Modifier.height(48.dp))
 
-                // Share Button
+                // PDF Share Button
                 Button(
+                    onClick = {
+                        val file = com.example.util.PdfExportHelper.exportCheckoutInvoice(
+                            context = context,
+                            items = items,
+                            total = total,
+                            date = date,
+                            profile = profile
+                        )
+                        if (file != null) {
+                            com.example.util.PdfExportHelper.shareFile(context, file)
+                        } else {
+                            Toast.makeText(context, "Failed to generate PDF", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = BalanceBlue)
+                ) {
+                    Icon(imageVector = Icons.Default.PictureAsPdf, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("SHARE PDF INVOICE", fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Text Share Button
+                OutlinedButton(
                     onClick = {
                         val shareText = buildString {
                             appendLine("TAX INVOICE - ${profile.businessName}")
                             appendLine("Date: $formattedDate")
                             appendLine("-------------------------")
                             items.forEach {
-                                appendLine("${it.product.name} x${it.quantity} - $${String.format(Locale.US, "%.2f", it.product.price * it.quantity)}")
+                                appendLine("${it.product.name} x${it.quantity} - $${String.format(Locale.US, "%,.2f", it.product.price * it.quantity)}")
                             }
                             appendLine("-------------------------")
-                            appendLine("TOTAL: $${String.format(Locale.US, "%.2f", total)}")
+                            appendLine("TOTAL: $${String.format(Locale.US, "%,.2f", total)}")
                             appendLine("Thank you!")
                         }
                         val intent = Intent(Intent.ACTION_SEND).apply {
@@ -957,19 +985,18 @@ fun InvoiceDialog(
                     },
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                     shape = RoundedCornerShape(28.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = BalanceBlue)
+                    border = BorderStroke(1.dp, BalanceBlue)
                 ) {
-                    Icon(imageVector = Icons.Default.Share, contentDescription = null)
+                    Icon(imageVector = Icons.Default.Share, contentDescription = null, tint = BalanceBlue)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("SHARE INVOICE", fontWeight = FontWeight.Bold)
+                    Text("SHARE TEXT INVOICE", fontWeight = FontWeight.Bold, color = BalanceBlue)
                 }
                 
                 Spacer(modifier = Modifier.height(16.dp))
-                OutlinedButton(
+                TextButton(
                     onClick = onDismiss,
                     modifier = Modifier.fillMaxWidth().height(56.dp),
-                    shape = RoundedCornerShape(28.dp),
-                    border = BorderStroke(1.dp, Color.Gray)
+                    shape = RoundedCornerShape(28.dp)
                 ) {
                     Text("BACK TO DASHBOARD", color = Color.Gray)
                 }

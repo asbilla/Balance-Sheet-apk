@@ -210,7 +210,7 @@ class AppPreferences(context: Context) {
             com.example.data.model.ProductItem("Henna (Herbal Henna + Oil)", 25.00, "Tinting"),
             com.example.data.model.ProductItem("20min Clean Up (Cleanse, Scrub, Face Pack)", 20.00, "Herbal Facial (BYO)"),
             com.example.data.model.ProductItem("Hair Oil Massage (10 min)", 15.00, "Hair Care (BYO)"),
-            com.example.data.model.ProductItem("Hand Henna", 10.00, "Hair Care (BYO)")
+            com.example.data.model.ProductItem("Hand Henna -Starting From $10", 10.00, "Hair Care (BYO)")
         )
     }
 

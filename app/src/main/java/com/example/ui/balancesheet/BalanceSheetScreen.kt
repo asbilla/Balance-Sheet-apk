@@ -130,6 +130,7 @@ data class EditTransactionState(
 fun BalanceSheetScreen(
     repository: TransactionRepository,
     onNavigateBack: () -> Unit,
+    onNavigateToStatementSelection: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -141,6 +142,8 @@ fun BalanceSheetScreen(
     var isSavingEdit by remember { mutableStateOf(false) }
     var transactionToDelete by remember { mutableStateOf<DisplayTransaction?>(null) }
     var isDeletingTx by remember { mutableStateOf(false) }
+    var selectedInvoiceTx by remember { mutableStateOf<DisplayTransaction?>(null) }
+    var isGeneratingSingleInvoice by remember { mutableStateOf(false) }
 
     // Group local transactions by Date with continuous cumulative balance carry-over
     val dateSummaries by remember(localTransactions) {
@@ -343,11 +346,10 @@ fun BalanceSheetScreen(
                     )
                 }
 
-                // Download Whole Spreadsheet in PDF format button
                 item {
                     Button(
-                        onClick = { handleDownloadPdf() },
-                        enabled = !isDownloadingPdf && dateSummaries.isNotEmpty(),
+                        onClick = { onNavigateToStatementSelection() },
+                        enabled = dateSummaries.isNotEmpty(),
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("download_pdf_main_button"),
@@ -355,34 +357,19 @@ fun BalanceSheetScreen(
                         shape = RoundedCornerShape(14.dp),
                         contentPadding = PaddingValues(vertical = 14.dp)
                     ) {
-                        if (isDownloadingPdf) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                color = Color.White,
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Preparing Spreadsheet PDF...",
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                fontSize = 15.sp
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.PictureAsPdf,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Download PDF (Whole Spreadsheet)",
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                fontSize = 15.sp
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Default.PictureAsPdf,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Download Statements",
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 15.sp
+                        )
                     }
                 }
 
@@ -406,7 +393,6 @@ fun BalanceSheetScreen(
                     }
                 }
 
-                // Date Cards sorted in descending chronological order
                 items(dateSummaries, key = { it.date }) { summary ->
                     DateBalanceCard(
                         summary = summary,
@@ -415,11 +401,76 @@ fun BalanceSheetScreen(
                         },
                         onDeleteTransaction = { tx ->
                             transactionToDelete = tx
+                        },
+                        onSelectTransaction = { tx ->
+                            selectedInvoiceTx = tx
                         }
                     )
                 }
             }
         }
+    }
+
+    // Transaction Invoice Dialog
+    if (selectedInvoiceTx != null) {
+        val tx = selectedInvoiceTx!!
+        val profile = repository.getBusinessProfile()
+        AlertDialog(
+            onDismissRequest = { selectedInvoiceTx = null },
+            title = { Text("Tax Invoice", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Business:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text(profile.businessName.ifBlank { "Daily Business Report" }, fontSize = 12.sp)
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Date:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text(tx.date, fontSize = 12.sp)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Type:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text(tx.type, fontSize = 12.sp)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Category:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text(tx.category.ifBlank { "-" }, fontSize = 12.sp)
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Total Amount:", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("$${String.format(Locale.US, "%,.2f", tx.amount)}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = BalanceBlue)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        isGeneratingSingleInvoice = true
+                        scope.launch {
+                            val file = PdfExportHelper.exportSingleInvoice(context, tx, profile)
+                            isGeneratingSingleInvoice = false
+                            if (file != null) {
+                                PdfExportHelper.shareFile(context, file)
+                            }
+                        }
+                    },
+                    enabled = !isGeneratingSingleInvoice
+                ) {
+                    if (isGeneratingSingleInvoice) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                    } else {
+                        Text("Share Invoice")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { selectedInvoiceTx = null }) {
+                    Text("Close")
+                }
+            }
+        )
     }
 
     // Modal Confirmation Dialog for Deleting a Transaction
@@ -630,7 +681,8 @@ fun OverallSummaryCard(
 fun DateBalanceCard(
     summary: DateBalanceSummary,
     onEditTransaction: (EditTransactionState) -> Unit,
-    onDeleteTransaction: (DisplayTransaction) -> Unit
+    onDeleteTransaction: (DisplayTransaction) -> Unit,
+    onSelectTransaction: (DisplayTransaction) -> Unit
 ) {
     var isExpanded by remember { mutableStateOf(false) }
     val rotationState by animateFloatAsState(targetValue = if (isExpanded) 180f else 0f, label = "arrow_rot")
@@ -804,6 +856,7 @@ fun DateBalanceCard(
                     summary.transactions.forEach { tx ->
                         TransactionItemRow(
                             tx = tx,
+                            onClick = { onSelectTransaction(tx) },
                             onEditClick = {
                                 onEditTransaction(
                                     EditTransactionState(
@@ -865,6 +918,7 @@ fun CategoryBreakdownPill(
 @Composable
 fun TransactionItemRow(
     tx: DisplayTransaction,
+    onClick: () -> Unit,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
@@ -877,6 +931,7 @@ fun TransactionItemRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable { onClick() }
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
@@ -1121,7 +1176,7 @@ fun EditAmountDialog(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Updates your local database and syncs to Google Spreadsheet immediately.",
+                            text = "Updates your local database.",
                             fontSize = 11.sp,
                             color = BalanceBlueText,
                             lineHeight = 14.sp
@@ -1161,7 +1216,7 @@ fun EditAmountDialog(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Save & Update Sheet", fontSize = 13.sp)
+                    Text("Save", fontSize = 13.sp)
                 }
             }
         },
