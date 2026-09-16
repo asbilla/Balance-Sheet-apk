@@ -6,10 +6,20 @@ import com.example.data.local.AppointmentEntity
 import com.example.data.local.TransactionEntity
 import com.example.data.model.AppointmentSettings
 import com.example.data.pref.AppPreferences
+import com.example.data.remote.RemoteAppointment
 import com.example.data.remote.RemoteTransaction
 import com.example.data.remote.SheetsApiService
 import com.example.worker.SyncWorker
 import kotlinx.coroutines.flow.Flow
+import java.util.UUID
+
+data class SyncResult(
+    val transactionsPushed: Int = 0,
+    val transactionsPulled: Int = 0,
+    val appointmentsPushed: Int = 0,
+    val appointmentsPulled: Int = 0,
+    val message: String = ""
+)
 
 class TransactionRepository(
     private val context: Context,
@@ -23,6 +33,7 @@ class TransactionRepository(
 
     val allTransactions: Flow<List<TransactionEntity>> = dao.getAllTransactions()
     val unsyncedCount: Flow<Int> = dao.getUnsyncedCount()
+    val unsyncedAppointmentCount: Flow<Int> = appointmentDao.getUnsyncedAppointmentCount()
     val businessProfile = preferences.businessProfileFlow
     val themeMode = preferences.themeModeFlow
     val appointmentSettings = preferences.appointmentSettingsFlow
@@ -38,20 +49,57 @@ class TransactionRepository(
     fun getActiveAppointmentCountForDate(date: String): Flow<Int> =
         appointmentDao.getActiveAppointmentCountForDate(date)
 
-    suspend fun saveAppointment(appointment: AppointmentEntity): Long =
-        appointmentDao.insertAppointment(appointment)
+    suspend fun saveAppointment(appointment: AppointmentEntity, syncToSheets: Boolean = true): Long {
+        val id = appointmentDao.insertAppointment(appointment.copy(isSynced = false))
+        if (syncToSheets) {
+            val url = getWebAppUrl()
+            if (url.isNotBlank() && !url.contains("offline-demo")) {
+                val insertedEntity = appointment.copy(id = id)
+                val res = apiService.postAppointment(url, insertedEntity)
+                if (res.isSuccess) {
+                    appointmentDao.markAsSyncedByIds(listOf(id))
+                }
+            }
+        }
+        return id
+    }
 
-    suspend fun updateAppointment(appointment: AppointmentEntity) =
-        appointmentDao.updateAppointment(appointment)
+    suspend fun updateAppointment(appointment: AppointmentEntity, syncToSheets: Boolean = true) {
+        appointmentDao.updateAppointment(appointment.copy(isSynced = false))
+        if (syncToSheets) {
+            val url = getWebAppUrl()
+            if (url.isNotBlank() && !url.contains("offline-demo")) {
+                val res = apiService.postAppointment(url, appointment)
+                if (res.isSuccess) {
+                    appointmentDao.markAsSyncedByIds(listOf(appointment.id))
+                }
+            }
+        }
+    }
 
-    suspend fun deleteAppointment(appointment: AppointmentEntity) =
+    suspend fun deleteAppointment(appointment: AppointmentEntity): Result<String> {
         appointmentDao.deleteAppointment(appointment)
+        val url = getWebAppUrl()
+        if (url.isNotBlank() && !url.contains("offline-demo")) {
+            return apiService.deleteAppointmentOnSheets(url, appointment.uuid)
+        }
+        return Result.success("Deleted locally")
+    }
 
-    suspend fun deleteAppointmentById(id: Long) =
+    suspend fun deleteAppointmentById(id: Long): Result<String> {
         appointmentDao.deleteAppointmentById(id)
+        return Result.success("Deleted locally")
+    }
 
-    suspend fun updateAppointmentStatus(id: Long, newStatus: String) =
+    suspend fun updateAppointmentStatus(id: Long, newStatus: String) {
         appointmentDao.updateStatus(id, newStatus)
+        // Trigger background sync or direct sync
+        val url = getWebAppUrl()
+        if (url.isNotBlank() && !url.contains("offline-demo")) {
+            // Find uuid and post update
+            // Background sync will pick up or push on next sync
+        }
+    }
 
     fun getAppointmentSettings(): AppointmentSettings = preferences.getAppointmentSettings()
 
@@ -103,35 +151,192 @@ class TransactionRepository(
         SyncWorker.enqueueSync(context)
     }
 
-    suspend fun fetchRemoteTransactions(): Result<List<RemoteTransaction>> {
-        val url = preferences.getWebAppUrl()
-        if (url.isBlank()) {
+    suspend fun syncBothWays(): Result<SyncResult> {
+        val url = getWebAppUrl()
+        if (url.isBlank() || url.contains("offline-demo")) {
             return Result.failure(IllegalStateException("Google Apps Script URL is not configured."))
         }
-        val result = apiService.fetchTransactions(url)
-        if (result.isSuccess) {
-            val remoteList = result.getOrNull().orEmpty()
-            // Reconcile with local database
-            syncRemoteIntoLocal(remoteList)
+
+        return try {
+            var txPushed = 0
+            var txPulled = 0
+            var apptPushed = 0
+            var apptPulled = 0
+
+            // 1. Push unsynced transactions using fast batch POST
+            val unsyncedTx = dao.getUnsyncedTransactions()
+            if (unsyncedTx.isNotEmpty()) {
+                val pushRes = apiService.postTransactionsBatch(url, unsyncedTx)
+                if (pushRes.isSuccess) {
+                    dao.markAsSyncedByUuid(unsyncedTx.map { it.uuid })
+                    txPushed = unsyncedTx.size
+                } else {
+                    // Fallback to individual
+                    for (tx in unsyncedTx) {
+                        val singleRes = apiService.postTransaction(url, tx)
+                        if (singleRes.isSuccess) {
+                            dao.markAsSyncedByUuid(listOf(tx.uuid))
+                            txPushed++
+                        }
+                    }
+                }
+            }
+
+            // 2. Push unsynced appointments using fast batch POST
+            val unsyncedAppts = appointmentDao.getUnsyncedAppointments()
+            if (unsyncedAppts.isNotEmpty()) {
+                val pushApptRes = apiService.postAppointmentsBatch(url, unsyncedAppts)
+                if (pushApptRes.isSuccess) {
+                    appointmentDao.markAsSyncedByIds(unsyncedAppts.map { it.id })
+                    apptPushed = unsyncedAppts.size
+                } else {
+                    for (appt in unsyncedAppts) {
+                        val singleRes = apiService.postAppointment(url, appt)
+                        if (singleRes.isSuccess) {
+                            appointmentDao.markAsSyncedByIds(listOf(appt.id))
+                            apptPushed++
+                        }
+                    }
+                }
+            }
+
+            // 3. Pull transactions from spreadsheet & save any edits/new rows into local Room DB
+            val fetchTxResult = apiService.fetchTransactions(url)
+            if (fetchTxResult.isSuccess) {
+                val remoteList = fetchTxResult.getOrNull().orEmpty()
+                txPulled = syncRemoteTransactionsIntoLocal(remoteList)
+            } else {
+                return Result.failure(fetchTxResult.exceptionOrNull() ?: Exception("Failed fetching transactions"))
+            }
+
+            // 4. Pull appointments from spreadsheet & save any edits/new rows into local Room DB
+            val fetchApptResult = apiService.fetchAppointments(url)
+            if (fetchApptResult.isSuccess) {
+                val remoteAppts = fetchApptResult.getOrNull().orEmpty()
+                apptPulled = syncRemoteAppointmentsIntoLocal(remoteAppts)
+            }
+
+            val summaryMsg = "Two-way sync complete: $txPushed uploaded, local database up to date."
+            Result.success(
+                SyncResult(
+                    transactionsPushed = txPushed,
+                    transactionsPulled = txPulled,
+                    appointmentsPushed = apptPushed,
+                    appointmentsPulled = apptPulled,
+                    message = summaryMsg
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
         }
-        return result
     }
 
-    private suspend fun syncRemoteIntoLocal(remoteList: List<RemoteTransaction>) {
-        if (remoteList.isEmpty()) return
-        // Check unsynced to avoid duplicate overrides
-        val unsynced = dao.getUnsyncedTransactions()
-        val unsyncedUuids = unsynced.map { it.uuid }.toSet()
+    suspend fun fetchRemoteTransactions(): Result<List<RemoteTransaction>> {
+        val syncRes = syncBothWays()
+        val url = preferences.getWebAppUrl()
+        return if (syncRes.isSuccess) {
+            apiService.fetchTransactions(url)
+        } else {
+            Result.failure(syncRes.exceptionOrNull() ?: Exception("Sync failed"))
+        }
+    }
 
-        // Match by UUID if available, else insert synced entities
-        val entitiesToInsert = mutableListOf<TransactionEntity>()
-        for (item in remoteList) {
-            if (item.id.isNotEmpty() && unsyncedUuids.contains(item.id)) {
-                // This transaction was pending and now present in sheet, mark as synced
-                dao.markAsSyncedByUuid(listOf(item.id))
-                continue
+    private suspend fun syncRemoteTransactionsIntoLocal(remoteList: List<RemoteTransaction>): Int {
+        if (remoteList.isEmpty()) return 0
+        var updatedCount = 0
+
+        val localList = dao.getAllTransactionsSync()
+        val localMap = localList.filter { it.uuid.isNotEmpty() }.associateBy { it.uuid }
+
+        for (remote in remoteList) {
+            val existing = if (remote.id.isNotEmpty()) localMap[remote.id] else null
+            if (existing != null) {
+                // If the user edited data directly on the spreadsheet, reflect those edits in local Room DB!
+                val amountDiff = Math.abs(existing.amount - remote.amount) > 0.001
+                val notesDiff = existing.category != remote.notes
+                val typeDiff = existing.type != remote.type
+                val dateDiff = existing.date != remote.date
+
+                if (amountDiff || notesDiff || typeDiff || dateDiff || !existing.isSynced) {
+                    val updated = existing.copy(
+                        date = remote.date,
+                        type = remote.type,
+                        category = remote.notes,
+                        amount = remote.amount,
+                        isSynced = true
+                    )
+                    dao.updateTransaction(updated)
+                    updatedCount++
+                }
+            } else {
+                // Brand new transaction entered directly into Google Sheets!
+                val newEntity = TransactionEntity(
+                    uuid = if (remote.id.isNotEmpty()) remote.id else UUID.randomUUID().toString(),
+                    date = remote.date,
+                    type = remote.type,
+                    category = remote.notes,
+                    amount = remote.amount,
+                    timestamp = System.currentTimeMillis(),
+                    isSynced = true
+                )
+                dao.insertTransaction(newEntity)
+                updatedCount++
             }
         }
+        return updatedCount
+    }
+
+    private suspend fun syncRemoteAppointmentsIntoLocal(remoteAppts: List<RemoteAppointment>): Int {
+        if (remoteAppts.isEmpty()) return 0
+        var updatedCount = 0
+
+        for (remote in remoteAppts) {
+            var local: AppointmentEntity? = if (remote.id.isNotEmpty()) {
+                appointmentDao.getAppointmentByUuid(remote.id)
+            } else null
+
+            if (local == null && remote.phone.isNotEmpty() && remote.date.isNotEmpty()) {
+                local = appointmentDao.findAppointment(remote.phone, remote.date, remote.time)
+            }
+
+            if (local != null) {
+                val statusDiff = local.status != remote.status
+                val nameDiff = local.customerName != remote.customerName
+                val serviceDiff = local.serviceName != remote.service
+                val notesDiff = local.notes != remote.notes
+                val priceDiff = Math.abs(local.price - remote.price) > 0.001
+
+                if (statusDiff || nameDiff || serviceDiff || notesDiff || priceDiff || !local.isSynced) {
+                    val updated = local.copy(
+                        customerName = if (remote.customerName.isNotBlank()) remote.customerName else local.customerName,
+                        serviceName = if (remote.service.isNotBlank()) remote.service else local.serviceName,
+                        status = remote.status,
+                        notes = remote.notes,
+                        price = if (remote.price > 0) remote.price else local.price,
+                        isSynced = true
+                    )
+                    appointmentDao.updateAppointment(updated)
+                    updatedCount++
+                }
+            } else {
+                val newAppt = AppointmentEntity(
+                    uuid = if (remote.id.isNotEmpty()) remote.id else UUID.randomUUID().toString(),
+                    customerName = remote.customerName,
+                    customerPhone = remote.phone,
+                    serviceName = remote.service,
+                    appointmentDate = remote.date,
+                    appointmentTime = remote.time,
+                    durationMinutes = remote.duration,
+                    price = remote.price,
+                    status = remote.status,
+                    notes = remote.notes,
+                    isSynced = true
+                )
+                appointmentDao.insertAppointment(newAppt)
+                updatedCount++
+            }
+        }
+        return updatedCount
     }
 
     suspend fun testConnection(url: String): Result<String> {

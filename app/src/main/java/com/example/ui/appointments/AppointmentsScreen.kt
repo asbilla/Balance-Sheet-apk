@@ -48,11 +48,13 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PhoneCallback
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -137,6 +139,7 @@ fun AppointmentsScreen(
     var showBookingSheet by remember { mutableStateOf(false) }
     var appointmentToEdit by remember { mutableStateOf<AppointmentEntity?>(null) }
     var appointmentToDelete by remember { mutableStateOf<AppointmentEntity?>(null) }
+    var isSyncing by remember { mutableStateOf(false) }
 
     // Filter appointments
     val filteredAppointments = remember(allAppointments, selectedDate, showAllDates, selectedStatusFilter, searchQuery) {
@@ -193,6 +196,43 @@ fun AppointmentsScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = {
+                            if (!isSyncing) {
+                                isSyncing = true
+                                scope.launch {
+                                    val res = repository.syncBothWays()
+                                    isSyncing = false
+                                    if (res.isSuccess) {
+                                        val data = res.getOrNull()
+                                        Toast.makeText(
+                                            context,
+                                            data?.message ?: "Appointments synced with Google Sheets",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    } else {
+                                        val err = res.exceptionOrNull()?.localizedMessage ?: "Sync timed out"
+                                        Toast.makeText(context, "Sync note: $err. Saved locally.", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
+                        },
+                        enabled = !isSyncing,
+                        modifier = Modifier.testTag("appointments_sync_button")
+                    ) {
+                        if (isSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Sync,
+                                contentDescription = "Sync Appointments with Sheets",
+                                tint = AppointmentPurple
+                            )
+                        }
+                    }
                     IconButton(
                         onClick = onNavigateToSettings,
                         modifier = Modifier.testTag("appointments_settings_button")

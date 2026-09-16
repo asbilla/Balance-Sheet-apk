@@ -375,6 +375,349 @@ function addOrUpdateProductInSpreadsheet(ss, data) {
 }
 
 /**
+ * Retrieves or initializes the "Appointments" sheet.
+ */
+function getOrCreateAppointmentsSheet(ss) {
+  var sheet = ss.getSheetByName("Appointments");
+  if (!sheet) {
+    var sheets = ss.getSheets();
+    for (var i = 0; i < sheets.length; i++) {
+      if (sheets[i].getName().toLowerCase() === "appointments") {
+        return sheets[i];
+      }
+    }
+
+    sheet = ss.insertSheet("Appointments");
+    var headers = [
+      "Date",
+      "Time",
+      "Customer Name",
+      "Phone",
+      "Service",
+      "Duration (min)",
+      "Price",
+      "Status",
+      "Notes",
+      "ID",
+      "Created At"
+    ];
+    sheet.appendRow(headers);
+
+    // Header styling: Deep Violet background (#6D28D9) to match App Appointments Theme
+    var headerRange = sheet.getRange(1, 1, 1, headers.length);
+    headerRange.setBackground("#6D28D9");
+    headerRange.setFontColor("#FFFFFF");
+    headerRange.setFontWeight("bold");
+    sheet.setFrozenRows(1);
+
+    // Set clean column widths
+    sheet.setColumnWidth(1, 110); // Date
+    sheet.setColumnWidth(2, 90);  // Time
+    sheet.setColumnWidth(3, 160); // Customer Name
+    sheet.setColumnWidth(4, 130); // Phone
+    sheet.setColumnWidth(5, 160); // Service
+    sheet.setColumnWidth(6, 110); // Duration
+    sheet.setColumnWidth(7, 100); // Price
+    sheet.setColumnWidth(8, 110); // Status
+    sheet.setColumnWidth(9, 200); // Notes
+    sheet.setColumnWidth(10, 90); // ID
+    sheet.setColumnWidth(11, 160);// Created At
+
+    sheet.hideColumns(10, 2); // Hide ID & Created At for clean spreadsheet view
+  }
+  return sheet;
+}
+
+/**
+ * Reads all appointments from the "Appointments" sheet.
+ */
+function getAppointmentsFromSpreadsheet(ss) {
+  var sheet = getOrCreateAppointmentsSheet(ss);
+  var rows = sheet.getDataRange().getValues();
+  var appointments = [];
+  if (rows.length <= 1) return appointments;
+
+  for (var i = 1; i < rows.length; i++) {
+    var row = rows[i];
+    if (!row || row.length === 0) continue;
+
+    var rawDate = row[0];
+    if (!rawDate) continue;
+
+    var formattedDate = "";
+    if (rawDate instanceof Date) {
+      formattedDate = Utilities.formatDate(rawDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+    } else {
+      var dateStr = String(rawDate).trim();
+      var parts = dateStr.split("-");
+      if (parts.length === 3 && parts[0].length !== 4) {
+        formattedDate = parts[2] + "-" + parts[1] + "-" + parts[0];
+      } else {
+        formattedDate = dateStr;
+      }
+    }
+
+    var time = String(row[1] || "");
+    var name = String(row[2] || "");
+    var phone = String(row[3] || "");
+    var service = String(row[4] || "");
+    var duration = parseInt(row[5], 10) || 30;
+    var price = parseFloat(row[6]) || 0.0;
+    var status = String(row[7] || "Scheduled");
+    var notes = String(row[8] || "");
+    var id = String(row[9] || "");
+    var createdAt = String(row[10] || "");
+
+    appointments.push({
+      id: id,
+      date: formattedDate,
+      time: time,
+      customerName: name,
+      phone: phone,
+      service: service,
+      duration: duration,
+      price: price,
+      status: status,
+      notes: notes,
+      createdAt: createdAt
+    });
+  }
+
+  return appointments;
+}
+
+/**
+ * Adds or updates a single appointment in "Appointments" sheet.
+ */
+function addOrUpdateAppointmentInSpreadsheet(ss, data) {
+  var sheet = getOrCreateAppointmentsSheet(ss);
+  var id = String(data.id || Utilities.getUuid());
+  var rawDateStr = data.date || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+  var date = parseInputDate(rawDateStr);
+  var time = String(data.time || "");
+  var customerName = String(data.customerName || "");
+  var phone = String(data.phone || "");
+  var service = String(data.service || "");
+  var duration = parseInt(data.duration, 10) || 30;
+  var price = parseFloat(data.price) || 0.0;
+  var status = String(data.status || "Scheduled");
+  var notes = String(data.notes || "");
+  var createdAt = data.createdAt ? String(data.createdAt) : new Date().toISOString();
+
+  var rows = sheet.getDataRange().getValues();
+  var foundRow = -1;
+
+  for (var i = 1; i < rows.length; i++) {
+    var rowId = String(rows[i][9] || "");
+    var rowPhone = String(rows[i][3] || "");
+    var rowTime = String(rows[i][1] || "");
+    var rDate = rows[i][0] instanceof Date ? Utilities.formatDate(rows[i][0], Session.getScriptTimeZone(), "yyyy-MM-dd") : String(rows[i][0]);
+
+    if (id && rowId && (rowId === id || id.indexOf(rowId) !== -1 || rowId.indexOf(id) !== -1)) {
+      foundRow = i + 1;
+      break;
+    } else if (!id && phone && rowPhone === phone && time === rowTime && rDate === rawDateStr) {
+      foundRow = i + 1;
+      break;
+    }
+  }
+
+  if (foundRow > 0) {
+    sheet.getRange(foundRow, 1, 1, 11).setValues([[
+      date,
+      time,
+      customerName,
+      phone,
+      service,
+      duration,
+      price,
+      status,
+      notes,
+      id,
+      createdAt
+    ]]);
+  } else {
+    sheet.appendRow([
+      date,
+      time,
+      customerName,
+      phone,
+      service,
+      duration,
+      price,
+      status,
+      notes,
+      id,
+      createdAt
+    ]);
+  }
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    sheet.getRange(2, 1, lastRow - 1, 1).setNumberFormat("dd-mm-yyyy");
+    sheet.getRange(2, 7, lastRow - 1, 1).setNumberFormat("$#,##0.00");
+    if (lastRow > 2) {
+      sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).sort([
+        {column: 1, ascending: true},
+        {column: 2, ascending: true}
+      ]);
+    }
+  }
+
+  return {
+    status: "success",
+    message: foundRow > 0 ? "Appointment updated" : "Appointment added",
+    id: id
+  };
+}
+
+/**
+ * Batch saves appointments to the "Appointments" sheet.
+ */
+function batchSaveAppointmentsInSpreadsheet(ss, data) {
+  var appts = data.appointments || [];
+  if (!appts || appts.length === 0) {
+    return { status: "success", count: 0, message: "No appointments provided" };
+  }
+
+  var sheet = getOrCreateAppointmentsSheet(ss);
+  var rows = sheet.getDataRange().getValues();
+  var idToRowMap = {};
+
+  for (var i = 1; i < rows.length; i++) {
+    var rId = String(rows[i][9] || "");
+    if (rId) {
+      idToRowMap[rId] = i + 1;
+    }
+  }
+
+  for (var a = 0; a < appts.length; a++) {
+    var item = appts[a];
+    var id = String(item.id || Utilities.getUuid());
+    var rawDateStr = item.date || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+    var date = parseInputDate(rawDateStr);
+    var time = String(item.time || "");
+    var customerName = String(item.customerName || "");
+    var phone = String(item.phone || "");
+    var service = String(item.service || "");
+    var duration = parseInt(item.duration, 10) || 30;
+    var price = parseFloat(item.price) || 0.0;
+    var status = String(item.status || "Scheduled");
+    var notes = String(item.notes || "");
+    var createdAt = item.createdAt ? String(item.createdAt) : new Date().toISOString();
+
+    var existingRow = idToRowMap[id];
+    if (existingRow) {
+      sheet.getRange(existingRow, 1, 1, 11).setValues([[
+        date, time, customerName, phone, service, duration, price, status, notes, id, createdAt
+      ]]);
+    } else {
+      sheet.appendRow([
+        date, time, customerName, phone, service, duration, price, status, notes, id, createdAt
+      ]);
+      idToRowMap[id] = sheet.getLastRow();
+    }
+  }
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    sheet.getRange(2, 1, lastRow - 1, 1).setNumberFormat("dd-mm-yyyy");
+    sheet.getRange(2, 7, lastRow - 1, 1).setNumberFormat("$#,##0.00");
+    if (lastRow > 2) {
+      sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).sort([
+        {column: 1, ascending: true},
+        {column: 2, ascending: true}
+      ]);
+    }
+  }
+
+  return {
+    status: "success",
+    count: appts.length,
+    message: "Saved " + appts.length + " appointments"
+  };
+}
+
+/**
+ * Deletes an appointment from the "Appointments" sheet by ID.
+ */
+function deleteAppointmentFromSpreadsheet(ss, data) {
+  var id = String(data.id || "");
+  if (!id) return { status: "error", message: "ID is required" };
+
+  var sheet = getOrCreateAppointmentsSheet(ss);
+  var rows = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    var rId = String(rows[i][9] || "");
+    if (rId && (rId === id || id.indexOf(rId) !== -1 || rId.indexOf(id) !== -1)) {
+      sheet.deleteRow(i + 1);
+      return { status: "success", message: "Appointment deleted" };
+    }
+  }
+
+  return { status: "not_found", message: "Appointment not found to delete" };
+}
+
+/**
+ * Batch adds transactions to monthly sheets.
+ */
+function batchAddTransactions(ss, data) {
+  var txs = data.transactions || [];
+  if (!txs || txs.length === 0) {
+    return { status: "success", count: 0, message: "No transactions to add" };
+  }
+
+  for (var t = 0; t < txs.length; t++) {
+    var item = txs[t];
+    var id = item.id || Utilities.getUuid();
+    var rawDateStr = item.date || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+    var date = parseInputDate(rawDateStr);
+    var type = item.type || "Daily Income";
+    var notes = item.notes || item.category || "";
+    var amount = parseFloat(item.amount) || 0.0;
+    var createdAt = item.timestamp ? new Date(item.timestamp).toISOString() : new Date().toISOString();
+
+    var sheetName = getMonthSheetName(date);
+    var sheet = getOrCreateMonthlySheet(ss, sheetName);
+    checkAndInsertOpeningBalance(ss, sheet, sheetName);
+
+    var isIncome = (type === "Daily Income" || type === "Opening Balance");
+    var incomeValue = isIncome ? amount : "";
+    var expenseValue = !isIncome ? amount : "";
+
+    sheet.appendRow([
+      date,
+      type,
+      notes,
+      incomeValue,
+      expenseValue,
+      "",
+      id,
+      createdAt
+    ]);
+
+    var lastRow = sheet.getLastRow();
+    if (lastRow > 1) {
+      sheet.getRange(2, 1, lastRow - 1, 1).setNumberFormat("dd-mm-yyyy");
+      if (lastRow > 2) {
+        sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).sort([{column: 1, ascending: true}]);
+      }
+      var dataRows = sheet.getLastRow() - 1;
+      if (dataRows > 0) {
+        sheet.getRange(2, 6, dataRows, 1).setFormulaR1C1("=SUM(R2C4:RC4)-SUM(R2C5:RC5)");
+        sheet.getRange(2, 4, dataRows, 3).setNumberFormat("$#,##0.00");
+      }
+    }
+  }
+
+  return {
+    status: "success",
+    count: txs.length,
+    message: "Batch added " + txs.length + " transactions"
+  };
+}
+
+/**
  * Updates an existing transaction's amount, notes, or type in the monthly sheets.
  */
 function updateTransactionInSpreadsheet(ss, data) {
@@ -615,6 +958,30 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify(profileResult)).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // Check if this is a request to save an Appointment
+    if (data.action === "save_appointment" || data.action === "add_appointment") {
+      var apptResult = addOrUpdateAppointmentInSpreadsheet(ss, data);
+      return ContentService.createTextOutput(JSON.stringify(apptResult)).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Check if this is a batch appointments save request
+    if (data.action === "save_appointments_batch") {
+      var batchApptResult = batchSaveAppointmentsInSpreadsheet(ss, data);
+      return ContentService.createTextOutput(JSON.stringify(batchApptResult)).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Check if this is a request to delete an appointment
+    if (data.action === "delete_appointment") {
+      var delApptResult = deleteAppointmentFromSpreadsheet(ss, data);
+      return ContentService.createTextOutput(JSON.stringify(delApptResult)).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Check if this is a batch transactions save request
+    if (data.action === "batch_add" || data.action === "sync_transactions") {
+      var batchTxResult = batchAddTransactions(ss, data);
+      return ContentService.createTextOutput(JSON.stringify(batchTxResult)).setMimeType(ContentService.MimeType.JSON);
+    }
+
     // Check if this is a request to save a Product item
     if (data.action === "save_product" || data.action === "add_product") {
       var prodResult = addOrUpdateProductInSpreadsheet(ss, data);
@@ -712,6 +1079,16 @@ function doGet(e) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
 
+    // Check for Appointments retrieval request
+    if (e && e.parameter && (e.parameter.action === "get_appointments" || e.parameter.action === "appointments")) {
+      var apptList = getAppointmentsFromSpreadsheet(ss);
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        count: apptList.length,
+        appointments: apptList
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     // Check for Products retrieval request (POS Point of Sale)
     if (e && e.parameter && (e.parameter.action === "get_products" || e.parameter.action === "products")) {
       var productList = getProductsFromSpreadsheet(ss);
@@ -763,7 +1140,7 @@ function doGet(e) {
       var name = sheet.getName();
 
       // Skip non-transaction sheets
-      if (name === "Sheet1" || name === "Products") {
+      if (name === "Sheet1" || name === "Products" || name === "Appointments") {
         continue;
       }
 

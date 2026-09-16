@@ -144,27 +144,29 @@ fun BalanceSheetScreen(
     var transactionToDelete by remember { mutableStateOf<DisplayTransaction?>(null) }
     var isDeletingTx by remember { mutableStateOf(false) }
 
-    // Fetch remote transactions from Google Sheets on initial launch
+    // Manual two-way sync triggered ONLY by user button click (not automatic on screen open)
     fun refreshSheetData() {
+        if (isRefreshing) return
         isRefreshing = true
         scope.launch {
-            val result = repository.fetchRemoteTransactions()
+            val result = repository.syncBothWays()
             isRefreshing = false
             if (result.isSuccess) {
-                remoteTransactions = result.getOrDefault(emptyList())
-                Toast.makeText(context, "Loaded ${remoteTransactions.size} records from Sheets", Toast.LENGTH_SHORT).show()
-            } else {
+                val syncData = result.getOrNull()
                 Toast.makeText(
                     context,
-                    "Sheets sync note: ${result.exceptionOrNull()?.message ?: "Using local DB"}",
+                    syncData?.message ?: "Two-way sync complete with spreadsheet",
+                    Toast.LENGTH_SHORT
+                ).show()
+            } else {
+                val err = result.exceptionOrNull()?.localizedMessage ?: "Sync timed out or network issue"
+                Toast.makeText(
+                    context,
+                    "Sync note: $err. Showing local offline data.",
                     Toast.LENGTH_LONG
                 ).show()
             }
         }
-    }
-
-    LaunchedEffect(Unit) {
-        refreshSheetData()
     }
 
     // Merge and group transactions by Date with continuous cumulative balance carry-over

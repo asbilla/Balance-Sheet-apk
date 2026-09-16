@@ -30,36 +30,60 @@ class SyncWorker(
         }
 
         val unsyncedList = database.transactionDao().getUnsyncedTransactions()
-        if (unsyncedList.isEmpty()) {
-            Log.d(TAG, "SyncWorker: No unsynced transactions found.")
+        val unsyncedAppointments = database.appointmentDao().getUnsyncedAppointments()
+
+        if (unsyncedList.isEmpty() && unsyncedAppointments.isEmpty()) {
+            Log.d(TAG, "SyncWorker: No unsynced transactions or appointments found.")
             return Result.success()
         }
 
-        Log.d(TAG, "SyncWorker starting: Syncing ${unsyncedList.size} transactions to Sheets...")
-
         var anyFailures = false
-        val successfullySyncedIds = mutableListOf<Long>()
 
-        for (transaction in unsyncedList) {
-            val result = apiService.postTransaction(webAppUrl, transaction)
-            if (result.isSuccess) {
-                successfullySyncedIds.add(transaction.id)
+        // Sync Transactions
+        if (unsyncedList.isNotEmpty()) {
+            Log.d(TAG, "SyncWorker: Syncing ${unsyncedList.size} transactions to Sheets...")
+            val batchResult = apiService.postTransactionsBatch(webAppUrl, unsyncedList)
+            if (batchResult.isSuccess) {
+                database.transactionDao().markAsSynced(unsyncedList.map { it.id })
+                Log.d(TAG, "SyncWorker: Batch marked ${unsyncedList.size} transactions as synced.")
             } else {
-                Log.e(TAG, "Failed syncing transaction #${transaction.id}: ${result.exceptionOrNull()?.message}")
-                anyFailures = true
+                for (transaction in unsyncedList) {
+                    val result = apiService.postTransaction(webAppUrl, transaction)
+                    if (result.isSuccess) {
+                        database.transactionDao().markAsSynced(listOf(transaction.id))
+                    } else {
+                        Log.e(TAG, "Failed syncing transaction #${transaction.id}: ${result.exceptionOrNull()?.message}")
+                        anyFailures = true
+                    }
+                }
             }
         }
 
-        if (successfullySyncedIds.isNotEmpty()) {
-            database.transactionDao().markAsSynced(successfullySyncedIds)
-            Log.d(TAG, "SyncWorker: Marked ${successfullySyncedIds.size} transactions as synced.")
+        // Sync Appointments
+        if (unsyncedAppointments.isNotEmpty()) {
+            Log.d(TAG, "SyncWorker: Syncing ${unsyncedAppointments.size} appointments to Sheets...")
+            val batchApptResult = apiService.postAppointmentsBatch(webAppUrl, unsyncedAppointments)
+            if (batchApptResult.isSuccess) {
+                database.appointmentDao().markAsSyncedByIds(unsyncedAppointments.map { it.id })
+                Log.d(TAG, "SyncWorker: Batch marked ${unsyncedAppointments.size} appointments as synced.")
+            } else {
+                for (appt in unsyncedAppointments) {
+                    val result = apiService.postAppointment(webAppUrl, appt)
+                    if (result.isSuccess) {
+                        database.appointmentDao().markAsSyncedByIds(listOf(appt.id))
+                    } else {
+                        Log.e(TAG, "Failed syncing appointment #${appt.id}: ${result.exceptionOrNull()?.message}")
+                        anyFailures = true
+                    }
+                }
+            }
         }
 
         return if (anyFailures) {
             Log.w(TAG, "SyncWorker completed with some errors, requesting retry.")
             Result.retry()
         } else {
-            Log.d(TAG, "SyncWorker successfully synced all transactions.")
+            Log.d(TAG, "SyncWorker successfully synced all pending records.")
             Result.success()
         }
     }
