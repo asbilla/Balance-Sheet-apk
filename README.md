@@ -90,4 +90,4 @@ You can edit services and prices directly in Google Sheets from your computer br
 2. Select **Open** and choose this project folder.
 3. Allow Gradle to sync dependencies.
 4. Run on an Android emulator or connected device (Android 8.0+ / API 26+).
-5. Build output APKs are located at `app/build/outputs/apk/debug/app-debug.apk` or in the root directory as `DailyReport.apk`.
+5. Build output APKs are located at `app/build/outputs/apk/debug/app-debug.apk` or in the root directory as `DailyReport.apk`. 
